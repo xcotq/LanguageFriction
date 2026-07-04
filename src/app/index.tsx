@@ -1,98 +1,104 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { ChatComposer } from "@/components/chat/chat-composer";
+import { ChatHeader } from "@/components/chat/chat-header";
+import { ChatSessionArea } from "@/components/chat/chat-session-area";
+import { ExtractionPreviewPanel } from "@/components/chat/extraction-preview-panel";
+import { ThemedView } from "@/components/themed-view";
+import { MaxContentWidth, Spacing, TopTabInset } from "@/constants/theme";
+import { useIndexChatSession } from "@/hooks/use-index-chat-session";
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
+const CURRENT_USER_ID = "mock-user";
+
+export default function ChatScreen() {
+    const insets = useSafeAreaInsets();
+    const chat = useIndexChatSession({ userId: CURRENT_USER_ID });
+    const hasSession = Boolean(chat.session);
+    const composerVisible =
+        chat.status.session === "loading" || chat.status.session === "active";
+
     return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
+        <ThemedView style={styles.screen}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                keyboardVerticalOffset={0}
+                style={styles.keyboardView}
+            >
+                <View
+                    style={[
+                        styles.content,
+                        {
+                            paddingTop: insets.top + TopTabInset,
+                            paddingBottom: insets.bottom + Spacing.two,
+                        },
+                    ]}
+                >
+                    <ChatHeader
+                        sessionExists={hasSession}
+                        sessionStatus={chat.status.session}
+                        operationStatus={chat.status.operation}
+                        sessionLabel={chat.labels.session}
+                        workflowLabel={chat.labels.workflow}
+                        endSessionActionStatus={chat.status.endSessionAction}
+                        createSessionActionStatus={
+                            chat.status.createSessionAction
+                        }
+                        onCreateSession={chat.actions.createSession}
+                        onEndSession={chat.actions.endSession}
+                        onOpenHistory={chat.actions.openHistory}
+                    />
+
+                    <ChatSessionArea
+                        isLoading={chat.status.session === "loading"}
+                        messages={chat.messages}
+                        sessionExists={hasSession}
+                        createSessionActionStatus={
+                            chat.status.createSessionAction
+                        }
+                        operationStatus={chat.status.operation}
+                        onCreateSession={chat.actions.createSession}
+                    />
+
+                    {chat.extractionPreview ? (
+                        <ExtractionPreviewPanel
+                            preview={chat.extractionPreview}
+                            isCommitting={
+                                chat.status.operation === "committing"
+                            }
+                            onCancel={chat.actions.cancelExtraction}
+                            onConfirm={chat.actions.confirmExtraction}
+                        />
+                    ) : null}
+
+                    <ChatComposer
+                        visible={composerVisible}
+                        bottomInset={insets.bottom}
+                        input={chat.input}
+                        composerActionStatus={chat.status.composerAction}
+                        sendActionStatus={chat.status.sendAction}
+                        onChangeInput={chat.actions.setInput}
+                        onSend={chat.actions.send}
+                    />
+                </View>
+            </KeyboardAvoidingView>
+        </ThemedView>
     );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
+    screen: {
+        flex: 1,
+    },
+    keyboardView: {
+        flex: 1,
+    },
+    content: {
+        flex: 1,
+        width: "100%",
+        maxWidth: MaxContentWidth,
+        alignSelf: "center",
+        paddingHorizontal: Spacing.three,
+        gap: Spacing.three,
+    },
 });

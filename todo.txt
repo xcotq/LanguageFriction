@@ -1,0 +1,11 @@
+1. inquiry的创建
+2. inquiry -> knowledge/concept/expression
+3. knowledge -> learningTarget
+4. learningTarget -> practiceItem, 间隔算法
+5. practiceItem -> UI
+6. userResponse -> LearningEvidence
+7. Evidence -> learningTarget
+8. message + context ->  related knowledge, concept, expression
+9. knowledge management ui
+10. voice
+11. sync
