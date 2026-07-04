@@ -41,3 +41,10 @@ example
 # generated native folders
 /ios
 /android
+
+.claude
+.agents
+.expo
+.gradle
+.idea
+**.log
