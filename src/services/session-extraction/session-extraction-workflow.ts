@@ -7,18 +7,25 @@ import {
 } from "@/services/llm/language-model-service";
 import {
     INQUIRY_KNOWLEDGE_DRAFT_PROMPT_OPTIONS,
-    SESSION_INQUIRY_SEGMENTATION_PROMPT_OPTIONS,
     createInquiryKnowledgeDraftPrompt,
-    createSessionInquirySegmentationPrompt,
 } from "@/services/llm/prompts/session-extraction-prompts";
-import type { Concept, InquiryMessageRole } from "@/types/domain";
+import type { Concept } from "@/types/domain";
 
+import { segmentInquiries } from "./segment-inquiries";
 import {
     createDeterministicId,
     normalizeLookupText,
     stableHash,
-    truncateText,
 } from "./stable";
+import {
+    asRecord,
+    asString,
+    asStringArray,
+    clampConfidence,
+    compactRecord,
+    isNonNullable,
+} from "./structured-output-normalizers";
+import { inferRecommendedUtterance } from "./transcript-heuristics";
 import type {
     ConceptCandidate,
     EntityCandidateRole,
@@ -33,10 +40,6 @@ import type {
     TranscriptSnapshot,
 } from "./types";
 
-type SegmentInquiriesOutput = {
-    inquiries: InquirySlice[];
-};
-
 type DraftKnowledgeOutput = InquiryKnowledgeDraft;
 
 export type SessionExtractionWorkflowInput = {
@@ -45,14 +48,6 @@ export type SessionExtractionWorkflowInput = {
     useModel?: boolean;
     modelService?: LanguageModelService;
 };
-
-const inquiryMessageRoles: InquiryMessageRole[] = [
-    "primary_question",
-    "clarification",
-    "answer",
-    "correction",
-    "supporting",
-];
 
 const entityRoles: EntityCandidateRole[] = [
     "primary",
@@ -82,54 +77,6 @@ const relationTypes: MainFlowRelationType[] = [
     "derived_from",
 ];
 
-const segmentInquiriesSchema = jsonSchema<SegmentInquiriesOutput>({
-    type: "object",
-    properties: {
-        inquiries: {
-            type: "array",
-            items: {
-                type: "object",
-                properties: {
-                    tempId: { type: "string" },
-                    title: { type: "string" },
-                    userNeed: { type: "string" },
-                    contextSummary: { type: "string" },
-                    sourceLanguage: { type: "string" },
-                    targetLanguage: { type: "string" },
-                    messageLinks: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            properties: {
-                                messageId: { type: "string" },
-                                role: {
-                                    type: "string",
-                                    enum: inquiryMessageRoles,
-                                },
-                                sequence: { type: "number" },
-                            },
-                            required: ["messageId", "role"],
-                        },
-                    },
-                    confidence: { type: "number" },
-                    reason: { type: "string" },
-                },
-                required: [
-                    "tempId",
-                    "title",
-                    "userNeed",
-                    "contextSummary",
-                    "targetLanguage",
-                    "messageLinks",
-                    "confidence",
-                    "reason",
-                ],
-            },
-        },
-    },
-    required: ["inquiries"],
-});
-
 const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
     type: "object",
     properties: {
@@ -139,10 +86,38 @@ const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
             properties: {
                 title: { type: "string" },
                 objective: { type: "string" },
-                contextSnapshot: { type: "object" },
-                explanation: { type: "string" },
+                contextSnapshot: {
+                    type: "object",
+                    properties: {
+                        source: { type: ["string", "null"] },
+                        domain: { type: ["string", "null"] },
+                        scenario: { type: ["string", "null"] },
+                        speakerRole: { type: ["string", "null"] },
+                        listenerRole: { type: ["string", "null"] },
+                        region: { type: ["string", "null"] },
+                        register: { type: ["string", "null"] },
+                        sourceLanguage: { type: ["string", "null"] },
+                        targetLanguage: { type: ["string", "null"] },
+                        note: { type: ["string", "null"] },
+                    },
+                    required: [
+                        "source",
+                        "domain",
+                        "scenario",
+                        "speakerRole",
+                        "listenerRole",
+                        "region",
+                        "register",
+                        "sourceLanguage",
+                        "targetLanguage",
+                        "note",
+                    ],
+                    additionalProperties: false,
+                },
+                explanation: { type: ["string", "null"] },
             },
-            required: ["title", "objective", "contextSnapshot"],
+            required: ["title", "objective", "contextSnapshot", "explanation"],
+            additionalProperties: false,
         },
         utterances: {
             type: "array",
@@ -152,9 +127,10 @@ const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
                     text: { type: "string" },
                     language: { type: "string" },
                     role: { type: "string", enum: utteranceRoles },
-                    usageNote: { type: "string" },
+                    usageNote: { type: ["string", "null"] },
                 },
-                required: ["text", "language", "role"],
+                required: ["text", "language", "role", "usageNote"],
+                additionalProperties: false,
             },
         },
         conceptCandidates: {
@@ -164,15 +140,32 @@ const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
                 properties: {
                     tempRef: { type: "string" },
                     canonicalLabel: { type: "string" },
-                    languageHint: { type: "string" },
-                    definition: { type: "string" },
-                    domain: { type: "array", items: { type: "string" } },
-                    aliases: { type: "array", items: { type: "string" } },
-                    disambiguationNote: { type: "string" },
+                    languageHint: { type: ["string", "null"] },
+                    definition: { type: ["string", "null"] },
+                    domain: {
+                        type: ["array", "null"],
+                        items: { type: "string" },
+                    },
+                    aliases: {
+                        type: ["array", "null"],
+                        items: { type: "string" },
+                    },
+                    disambiguationNote: { type: ["string", "null"] },
                     role: { type: "string", enum: entityRoles },
                     evidence: { type: "array", items: { type: "string" } },
                 },
-                required: ["tempRef", "canonicalLabel", "role", "evidence"],
+                required: [
+                    "tempRef",
+                    "canonicalLabel",
+                    "languageHint",
+                    "definition",
+                    "domain",
+                    "aliases",
+                    "disambiguationNote",
+                    "role",
+                    "evidence",
+                ],
+                additionalProperties: false,
             },
         },
         expressionCandidates: {
@@ -184,12 +177,15 @@ const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
                     text: { type: "string" },
                     language: { type: "string" },
                     normalizedText: { type: "string" },
-                    partOfSpeech: { type: "string" },
-                    register: { type: "string" },
-                    region: { type: "string" },
-                    domain: { type: "array", items: { type: "string" } },
-                    meaningNote: { type: "string" },
-                    usageNote: { type: "string" },
+                    partOfSpeech: { type: ["string", "null"] },
+                    register: { type: ["string", "null"] },
+                    region: { type: ["string", "null"] },
+                    domain: {
+                        type: ["array", "null"],
+                        items: { type: "string" },
+                    },
+                    meaningNote: { type: ["string", "null"] },
+                    usageNote: { type: ["string", "null"] },
                     role: { type: "string", enum: entityRoles },
                     evidence: { type: "array", items: { type: "string" } },
                 },
@@ -198,9 +194,16 @@ const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
                     "text",
                     "language",
                     "normalizedText",
+                    "partOfSpeech",
+                    "register",
+                    "region",
+                    "domain",
+                    "meaningNote",
+                    "usageNote",
                     "role",
                     "evidence",
                 ],
+                additionalProperties: false,
             },
         },
         relationCandidates: {
@@ -216,7 +219,25 @@ const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
                         enum: ["directed", "undirected"],
                     },
                     confidence: { type: "number" },
-                    evidence: { type: "object" },
+                    evidence: {
+                        type: "object",
+                        properties: {
+                            summary: { type: ["string", "null"] },
+                            sourceMessageIds: {
+                                type: "array",
+                                items: { type: "string" },
+                            },
+                            quote: { type: ["string", "null"] },
+                            reason: { type: ["string", "null"] },
+                        },
+                        required: [
+                            "summary",
+                            "sourceMessageIds",
+                            "quote",
+                            "reason",
+                        ],
+                        additionalProperties: false,
+                    },
                 },
                 required: [
                     "fromTempRef",
@@ -226,6 +247,7 @@ const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
                     "confidence",
                     "evidence",
                 ],
+                additionalProperties: false,
             },
         },
     },
@@ -237,233 +259,8 @@ const draftKnowledgeSchema = jsonSchema<DraftKnowledgeOutput>({
         "expressionCandidates",
         "relationCandidates",
     ],
+    additionalProperties: false,
 });
-
-function asRecord(value: unknown): Record<string, unknown> {
-    return value && typeof value === "object" && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : {};
-}
-
-function isNonNullable<T>(value: T | null | undefined): value is T {
-    return value != null;
-}
-
-function asString(value: unknown, fallback = "") {
-    return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
-function asStringArray(value: unknown): string[] {
-    return Array.isArray(value)
-        ? value
-              .filter((item): item is string => typeof item === "string")
-              .map((item) => item.trim())
-              .filter(Boolean)
-        : [];
-}
-
-function clampConfidence(value: unknown, fallback = 0.7) {
-    return typeof value === "number" && Number.isFinite(value)
-        ? Math.min(1, Math.max(0, value))
-        : fallback;
-}
-
-function firstUserMessage(snapshot: TranscriptSnapshot) {
-    return snapshot.messages.find(
-        (message) => message.role === "user" && message.text.trim()
-    );
-}
-
-function assistantMessages(snapshot: TranscriptSnapshot) {
-    return snapshot.messages.filter(
-        (message) => message.role === "assistant" && message.text.trim()
-    );
-}
-
-function includesCjk(text: string) {
-    return /[\u3400-\u9fff]/.test(text);
-}
-
-function inferSourceLanguage(text: string) {
-    return includesCjk(text) ? "zh-CN" : undefined;
-}
-
-function inferRecommendedUtterance(snapshot: TranscriptSnapshot) {
-    const assistantText = assistantMessages(snapshot)
-        .map((message) => message.text)
-        .join("\n\n");
-    const quoteMatch = assistantText.match(/^\s*>\s*(.+)$/m);
-    const codeMatch = assistantText.match(/`([^`\n]{8,160})`/);
-
-    return (quoteMatch?.[1] ?? codeMatch?.[1] ?? "").trim();
-}
-
-function createDefaultMessageLinks(
-    snapshot: TranscriptSnapshot
-): InquirySlice["messageLinks"] {
-    const firstUser = firstUserMessage(snapshot);
-    const firstAssistant = assistantMessages(snapshot)[0];
-    const links: InquirySlice["messageLinks"] = [];
-
-    if (firstUser) {
-        links.push({
-            messageId: firstUser.id,
-            role: "primary_question",
-            sequence: 1,
-        });
-    }
-
-    if (firstAssistant) {
-        links.push({
-            messageId: firstAssistant.id,
-            role: "answer",
-            sequence: 2,
-        });
-    }
-
-    return links;
-}
-
-function normalizeMessageLinks(
-    value: unknown,
-    snapshot: TranscriptSnapshot
-): InquirySlice["messageLinks"] {
-    const validMessageIds = new Set(
-        snapshot.messages.map((message) => message.id)
-    );
-
-    const links = Array.isArray(value)
-        ? value
-              .map(
-                  (
-                      item,
-                      index
-                  ): InquirySlice["messageLinks"][number] | null => {
-                      const record = asRecord(item);
-                      const messageId = asString(record.messageId);
-                      const role = asString(record.role) as InquiryMessageRole;
-
-                      if (
-                          !validMessageIds.has(messageId) ||
-                          !inquiryMessageRoles.includes(role)
-                      ) {
-                          return null;
-                      }
-
-                      return {
-                          messageId,
-                          role,
-                          sequence:
-                              typeof record.sequence === "number"
-                                  ? record.sequence
-                                  : index + 1,
-                      };
-                  }
-              )
-              .filter(isNonNullable)
-        : [];
-
-    return links.length > 0 ? links : createDefaultMessageLinks(snapshot);
-}
-
-function normalizeInquirySlices(
-    output: SegmentInquiriesOutput,
-    snapshot: TranscriptSnapshot
-): InquirySlice[] {
-    const records = Array.isArray(output.inquiries) ? output.inquiries : [];
-
-    return records
-        .map((rawSlice, index): InquirySlice | null => {
-            const record = asRecord(rawSlice);
-            const userNeed = asString(record.userNeed);
-
-            if (!userNeed) {
-                return null;
-            }
-
-            const title = asString(
-                record.title,
-                truncateText(userNeed, 64) || "Language friction inquiry"
-            );
-
-            return {
-                tempId: asString(
-                    record.tempId,
-                    createDeterministicId("inq", {
-                        sessionId: snapshot.sessionId,
-                        transcriptHash: snapshot.transcriptHash,
-                        index,
-                    })
-                ),
-                title,
-                userNeed,
-                contextSummary: asString(
-                    record.contextSummary,
-                    "Concrete expression question from the session."
-                ),
-                sourceLanguage: asString(record.sourceLanguage) || undefined,
-                targetLanguage: asString(record.targetLanguage, "en"),
-                messageLinks: normalizeMessageLinks(
-                    record.messageLinks,
-                    snapshot
-                ),
-                confidence: clampConfidence(record.confidence),
-                reason: asString(record.reason, "Structured extraction."),
-            };
-        })
-        .filter(isNonNullable)
-        .slice(0, 6);
-}
-
-function createHeuristicSlices(snapshot: TranscriptSnapshot): InquirySlice[] {
-    const userMessage = firstUserMessage(snapshot);
-
-    if (!userMessage) {
-        return [];
-    }
-
-    const recommendedUtterance = inferRecommendedUtterance(snapshot);
-    const title = recommendedUtterance
-        ? `Learn: ${truncateText(recommendedUtterance, 58)}`
-        : truncateText(userMessage.text, 58);
-
-    return [
-        {
-            tempId: createDeterministicId("inq", {
-                sessionId: snapshot.sessionId,
-                messageId: userMessage.id,
-                text: userMessage.text,
-            }),
-            title: title || "Language friction inquiry",
-            userNeed: userMessage.text,
-            contextSummary:
-                "User asked a concrete expression question during this session.",
-            sourceLanguage: inferSourceLanguage(userMessage.text),
-            targetLanguage: "en",
-            messageLinks: createDefaultMessageLinks(snapshot),
-            confidence: 0.62,
-            reason: "Local fallback segmentation for mock mode.",
-        },
-    ];
-}
-
-async function segmentInquiries(
-    snapshot: TranscriptSnapshot,
-    modelService: LanguageModelService,
-    useModel: boolean
-) {
-    if (!useModel) {
-        return createHeuristicSlices(snapshot);
-    }
-
-    const output = await modelService.structuredOutput({
-        schema: segmentInquiriesSchema,
-        options: SESSION_INQUIRY_SEGMENTATION_PROMPT_OPTIONS,
-        input: createSessionInquirySegmentationPrompt(snapshot),
-    });
-
-    return normalizeInquirySlices(output, snapshot);
-}
 
 function normalizeCandidateRole(value: unknown): EntityCandidateRole {
     const role = asString(value) as EntityCandidateRole;
@@ -586,7 +383,7 @@ function normalizeRelationCandidate(value: unknown): RelationCandidate | null {
         type,
         direction,
         confidence: clampConfidence(record.confidence),
-        evidence: asRecord(record.evidence),
+        evidence: compactRecord(record.evidence),
     };
 }
 
@@ -635,7 +432,7 @@ function normalizeKnowledgeDraft(
         knowledgePoint: {
             title: asString(knowledgePoint.title, inquiry.title),
             objective: asString(knowledgePoint.objective, inquiry.userNeed),
-            contextSnapshot: asRecord(knowledgePoint.contextSnapshot),
+            contextSnapshot: compactRecord(knowledgePoint.contextSnapshot),
             explanation: asString(knowledgePoint.explanation) || undefined,
         },
         utterances,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert } from "react-native";
 import { useRouter } from "expo-router";
 
+import { showAlert } from "@/components/ui/platform-alert";
 import { useRepositories } from "@/data/repositories";
 import type {
     ChatOperationStatus,
@@ -83,7 +83,7 @@ export function useIndexSessionController({
             }
         } catch (error) {
             console.error("Failed to create session", error);
-            Alert.alert("Create failed", "The session could not be created.");
+            showAlert("Create failed", "The session could not be created.");
         } finally {
             if (isMountedRef.current) {
                 setOperationStatus("idle");
@@ -125,7 +125,7 @@ export function useIndexSessionController({
                 );
 
                 if (preview.inquiryPreviews.length === 0) {
-                    Alert.alert(
+                    showAlert(
                         "Nothing to save",
                         "No durable language inquiry was extracted from this session."
                     );
@@ -134,7 +134,7 @@ export function useIndexSessionController({
         } catch (error) {
             console.error("Failed to end session", error);
             if (isMountedRef.current) {
-                Alert.alert(
+                showAlert(
                     "End failed",
                     "The session could not be closed or extracted."
                 );
@@ -173,7 +173,7 @@ export function useIndexSessionController({
                 setPreviewStatus("saved");
 
                 const savedCount = approvedExtraction.inquiries.length;
-                Alert.alert(
+                showAlert(
                     "Saved",
                     savedCount === 1
                         ? "1 inquiry preview was saved."
@@ -183,7 +183,7 @@ export function useIndexSessionController({
         } catch (error) {
             console.error("Failed to save extraction", error);
             if (isMountedRef.current) {
-                Alert.alert(
+                showAlert(
                     "Save failed",
                     "The approved knowledge preview could not be saved."
                 );

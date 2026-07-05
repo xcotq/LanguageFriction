@@ -26,10 +26,11 @@ export type ProviderChatMessage = {
 
 export type CompletionInput = string | ProviderChatMessage[];
 
-type LanguageModelProviderOptions = StoredLanguageModelSettings & {
+export type LanguageModelProviderOptions = StoredLanguageModelSettings & {
     temperature?: number;
     maxRetries?: number;
     timeout?: number;
+    fetch?: typeof globalThis.fetch;
 };
 
 export type LanguageModelSettings = StoredLanguageModelSettings;
@@ -127,7 +128,7 @@ function toPromptOptions(input: ModelMessage[] | string) {
     };
 }
 
-class AiSdkProvider {
+export class AiSdkProvider {
     private readonly config: LanguageModelProviderOptions;
 
     private readonly model: LanguageModel;
@@ -150,7 +151,9 @@ class AiSdkProvider {
             name: "language-friction",
             baseURL: this.config.endpoint,
             apiKey: this.config.apiKey,
-            fetch: expoFetch as unknown as typeof globalThis.fetch,
+            fetch:
+                this.config.fetch ??
+                (expoFetch as unknown as typeof globalThis.fetch),
             supportsStructuredOutputs: true,
         });
 
@@ -253,6 +256,11 @@ class AiSdkProvider {
                 name: options.name,
                 description: options.description,
             }),
+            providerOptions: {
+                openaiCompatible: {
+                    strictJsonSchema: true,
+                },
+            },
             ...this.getCallSettings(),
         });
 

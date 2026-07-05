@@ -152,12 +152,20 @@ const practiceAnswerEvaluationSchema =
                                         enum: issueSeverities,
                                     },
                                     note: { type: "string" },
-                                    relatedEntityId: { type: "string" },
+                                    relatedEntityId: {
+                                        type: ["string", "null"],
+                                    },
                                 },
-                                required: ["kind", "severity", "note"],
+                                required: [
+                                    "kind",
+                                    "severity",
+                                    "note",
+                                    "relatedEntityId",
+                                ],
+                                additionalProperties: false,
                             },
                         },
-                        acceptedAlternative: { type: "string" },
+                        acceptedAlternative: { type: ["string", "null"] },
                     },
                     required: [
                         "learningTargetId",
@@ -165,11 +173,14 @@ const practiceAnswerEvaluationSchema =
                         "confidence",
                         "reason",
                         "issues",
+                        "acceptedAlternative",
                     ],
+                    additionalProperties: false,
                 },
             },
         },
         required: ["feedbackSummary", "targetResults"],
+        additionalProperties: false,
     });
 
 function formatResponseTimestamp(date: Date) {

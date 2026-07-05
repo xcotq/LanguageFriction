@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SessionListItem } from "@/components/chat/session-list-item";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { showAlert, showConfirm } from "@/components/ui/platform-alert";
 import { MaxContentWidth, Spacing, TopTabInset } from "@/constants/theme";
 import { useRepositories } from "@/data/repositories";
 import { useTheme } from "@/hooks/use-theme";
@@ -50,52 +51,43 @@ export default function HistoryScreen() {
     }, [repository]);
 
     const handleDeleteSession = useCallback(
-        (session: ChatSession) => {
-            Alert.alert(
-                "Delete session?",
-                "This will remove the conversation and its messages.",
-                [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: async () => {
-                            try {
-                                await repository.deleteSession(session.id);
-                                const nextSessions = sessions.filter(
-                                    (item) => item.id !== session.id
-                                );
+        async (session: ChatSession) => {
+            const confirmed = await showConfirm({
+                title: "Delete session?",
+                message: "This will remove the conversation and its messages.",
+                confirmText: "Delete",
+                destructive: true,
+            });
 
-                                setSessions(nextSessions);
+            if (!confirmed) {
+                return;
+            }
 
-                                if (session.id === selectedSessionId) {
-                                    const nextSelectedSession = nextSessions[0];
-                                    router.replace(
-                                        nextSelectedSession
-                                            ? {
-                                                  pathname: "/history",
-                                                  params: {
-                                                      sessionId:
-                                                          nextSelectedSession.id,
-                                                  },
-                                              }
-                                            : "/history"
-                                    );
-                                }
-                            } catch (error) {
-                                console.error(
-                                    "Failed to delete session",
-                                    error
-                                );
-                                Alert.alert(
-                                    "Delete failed",
-                                    "The session could not be deleted."
-                                );
-                            }
-                        },
-                    },
-                ]
-            );
+            try {
+                await repository.deleteSession(session.id);
+                const nextSessions = sessions.filter(
+                    (item) => item.id !== session.id
+                );
+
+                setSessions(nextSessions);
+
+                if (session.id === selectedSessionId) {
+                    const nextSelectedSession = nextSessions[0];
+                    router.replace(
+                        nextSelectedSession
+                            ? {
+                                  pathname: "/history",
+                                  params: {
+                                      sessionId: nextSelectedSession.id,
+                                  },
+                              }
+                            : "/history"
+                    );
+                }
+            } catch (error) {
+                console.error("Failed to delete session", error);
+                showAlert("Delete failed", "The session could not be deleted.");
+            }
         },
         [repository, router, selectedSessionId, sessions]
     );

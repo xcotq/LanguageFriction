@@ -1,7 +1,5 @@
-import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import type { SQLiteDatabase } from "expo-sqlite";
 
-import { getDrizzleDb } from "@/data/database/orm";
 import {
     learningEvidence,
     learningTargetEntities,
@@ -16,7 +14,6 @@ import {
     optionalDateToText,
     optionalJsonToText,
     optionalTextToDate,
-    optionalTextToJson,
     textToDate,
     textToJson,
 } from "@/data/database/serialization";
@@ -35,6 +32,68 @@ type PracticeItemRow = typeof practiceItems.$inferSelect;
 type PracticeItemTargetRow = typeof practiceItemTargets.$inferSelect;
 type UserResponseRow = typeof userResponses.$inferSelect;
 type LearningEvidenceRow = typeof learningEvidence.$inferSelect;
+
+const learningTargetColumns = `
+  id,
+  user_id AS userId,
+  knowledge_point_id AS knowledgePointId,
+  ability,
+  status,
+  priority,
+  difficulty,
+  stability,
+  due_at AS dueAt,
+  last_reviewed_at AS lastReviewedAt,
+  review_count AS reviewCount,
+  lapse_count AS lapseCount,
+  scheduling_algorithm AS schedulingAlgorithm,
+  scheduling_version AS schedulingVersion,
+  created_at AS createdAt,
+  updated_at AS updatedAt
+`;
+
+const learningTargetEntityColumns = `
+  learning_target_id AS learningTargetId,
+  entity_type AS entityType,
+  entity_id AS entityId,
+  role
+`;
+
+const practiceItemColumns = `
+  id,
+  type,
+  prompt_json AS promptJson,
+  expected_answer_json AS expectedAnswerJson,
+  acceptable_answers_json AS acceptableAnswersJson,
+  context_snapshot_json AS contextSnapshotJson,
+  generated_at AS generatedAt,
+  expires_at AS expiresAt
+`;
+
+const practiceItemTargetColumns = `
+  practice_item_id AS practiceItemId,
+  learning_target_id AS learningTargetId,
+  weight
+`;
+
+const userResponseColumns = `
+  id,
+  practice_item_id AS practiceItemId,
+  user_id AS userId,
+  answer_json AS answerJson,
+  submitted_at AS submittedAt,
+  feedback_json AS feedbackJson
+`;
+
+const learningEvidenceColumns = `
+  id,
+  user_response_id AS userResponseId,
+  learning_target_id AS learningTargetId,
+  result,
+  confidence,
+  error_json AS errorJson,
+  created_at AS createdAt
+`;
 
 type PracticeItemDataRow = {
     id: string;
@@ -83,6 +142,26 @@ function mapLearningTarget(row: LearningTargetRow): LearningTarget {
     };
 }
 
+function parseJsonOrFallback<T>(value: string, fallback: T): T {
+    try {
+        return textToJson<T>(value);
+    } catch (error) {
+        console.warn("Failed to parse persisted JSON value.", error);
+        return fallback;
+    }
+}
+
+function parseOptionalJsonOrFallback<T>(
+    value: string | null | undefined,
+    fallback: T | undefined
+): T | undefined {
+    if (value == null) {
+        return undefined;
+    }
+
+    return parseJsonOrFallback<T | undefined>(value, fallback);
+}
+
 function mapLearningTargetEntity(
     row: LearningTargetEntityRow
 ): LearningTargetEntity {
@@ -98,13 +177,21 @@ function mapPracticeItemData(row: PracticeItemDataRow): PracticeItem {
     return {
         id: row.id,
         type: row.type,
-        prompt: textToJson<unknown>(row.promptJson),
-        expectedAnswer: optionalTextToJson<unknown>(row.expectedAnswerJson),
-        acceptableAnswers: optionalTextToJson<unknown>(
-            row.acceptableAnswersJson
+        prompt: parseJsonOrFallback<unknown>(row.promptJson, {
+            malformedJson: true,
+            raw: row.promptJson,
+        }),
+        expectedAnswer: parseOptionalJsonOrFallback<unknown>(
+            row.expectedAnswerJson,
+            undefined
         ),
-        contextSnapshot: optionalTextToJson<Record<string, unknown>>(
-            row.contextSnapshotJson
+        acceptableAnswers: parseOptionalJsonOrFallback<unknown>(
+            row.acceptableAnswersJson,
+            undefined
+        ),
+        contextSnapshot: parseOptionalJsonOrFallback<Record<string, unknown>>(
+            row.contextSnapshotJson,
+            undefined
         ),
         generatedAt: textToDate(row.generatedAt),
         expiresAt: optionalTextToDate(row.expiresAt),
@@ -140,9 +227,15 @@ function mapUserResponse(row: UserResponseRow): UserResponse {
         id: row.id,
         practiceItemId: row.practiceItemId,
         userId: row.userId,
-        answer: textToJson<unknown>(row.answerJson),
+        answer: parseJsonOrFallback<unknown>(row.answerJson, {
+            malformedJson: true,
+            raw: row.answerJson,
+        }),
         submittedAt: textToDate(row.submittedAt),
-        feedback: optionalTextToJson<unknown>(row.feedbackJson),
+        feedback: parseOptionalJsonOrFallback<unknown>(
+            row.feedbackJson,
+            undefined
+        ),
     };
 }
 
@@ -153,17 +246,13 @@ function mapLearningEvidence(row: LearningEvidenceRow): LearningEvidence {
         learningTargetId: row.learningTargetId,
         result: row.result,
         confidence: row.confidence ?? undefined,
-        error: optionalTextToJson<unknown>(row.errorJson),
+        error: parseOptionalJsonOrFallback<unknown>(row.errorJson, undefined),
         createdAt: textToDate(row.createdAt),
     };
 }
 
 export class LearningTargetDao {
-    private readonly orm;
-
-    constructor(db: SQLiteDatabase) {
-        this.orm = getDrizzleDb(db);
-    }
+    constructor(private readonly db: SQLiteDatabase) {}
 
     async upsert(target: LearningTarget): Promise<void> {
         const values = {
@@ -185,37 +274,60 @@ export class LearningTargetDao {
             updatedAt: dateToText(target.updatedAt),
         };
 
-        this.orm
-            .insert(learningTargets)
-            .values(values)
-            .onConflictDoUpdate({
-                target: learningTargets.id,
-                set: {
-                    userId: values.userId,
-                    knowledgePointId: values.knowledgePointId,
-                    ability: values.ability,
-                    status: values.status,
-                    priority: values.priority,
-                    difficulty: values.difficulty,
-                    stability: values.stability,
-                    dueAt: values.dueAt,
-                    lastReviewedAt: values.lastReviewedAt,
-                    reviewCount: values.reviewCount,
-                    lapseCount: values.lapseCount,
-                    schedulingAlgorithm: values.schedulingAlgorithm,
-                    schedulingVersion: values.schedulingVersion,
-                    updatedAt: values.updatedAt,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO learning_targets (
+  id, user_id, knowledge_point_id, ability, status, priority, difficulty,
+  stability, due_at, last_reviewed_at, review_count, lapse_count,
+  scheduling_algorithm, scheduling_version, created_at, updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  user_id = excluded.user_id,
+  knowledge_point_id = excluded.knowledge_point_id,
+  ability = excluded.ability,
+  status = excluded.status,
+  priority = excluded.priority,
+  difficulty = excluded.difficulty,
+  stability = excluded.stability,
+  due_at = excluded.due_at,
+  last_reviewed_at = excluded.last_reviewed_at,
+  review_count = excluded.review_count,
+  lapse_count = excluded.lapse_count,
+  scheduling_algorithm = excluded.scheduling_algorithm,
+  scheduling_version = excluded.scheduling_version,
+  updated_at = excluded.updated_at
+`,
+            [
+                values.id,
+                values.userId,
+                values.knowledgePointId,
+                values.ability,
+                values.status,
+                values.priority,
+                values.difficulty,
+                values.stability,
+                values.dueAt,
+                values.lastReviewedAt,
+                values.reviewCount,
+                values.lapseCount,
+                values.schedulingAlgorithm,
+                values.schedulingVersion,
+                values.createdAt,
+                values.updatedAt,
+            ]
+        );
     }
 
     async getById(id: string): Promise<LearningTarget | null> {
-        const row = this.orm
-            .select()
-            .from(learningTargets)
-            .where(eq(learningTargets.id, id))
-            .get();
+        const row = await this.db.getFirstAsync<LearningTargetRow>(
+            `
+SELECT ${learningTargetColumns}
+FROM learning_targets
+WHERE id = ?
+`,
+            [id]
+        );
         return row ? mapLearningTarget(row) : null;
     }
 
@@ -224,12 +336,17 @@ export class LearningTargetDao {
             return [];
         }
 
-        return this.orm
-            .select()
-            .from(learningTargets)
-            .where(inArray(learningTargets.id, ids))
-            .all()
-            .map(mapLearningTarget);
+        const placeholders = ids.map(() => "?").join(", ");
+        const rows = await this.db.getAllAsync<LearningTargetRow>(
+            `
+SELECT ${learningTargetColumns}
+FROM learning_targets
+WHERE id IN (${placeholders})
+`,
+            ids
+        );
+
+        return rows.map(mapLearningTarget);
     }
 
     async listDue(
@@ -237,75 +354,66 @@ export class LearningTargetDao {
         now = new Date(),
         limit = 50
     ): Promise<LearningTarget[]> {
-        return this.orm
-            .select()
-            .from(learningTargets)
-            .where(
-                and(
-                    eq(learningTargets.userId, userId),
-                    eq(learningTargets.status, "active"),
-                    or(
-                        isNull(learningTargets.dueAt),
-                        lte(learningTargets.dueAt, dateToText(now))
-                    )
-                )
-            )
-            .orderBy(asc(learningTargets.dueAt), desc(learningTargets.priority))
-            .limit(limit)
-            .all()
-            .map(mapLearningTarget);
+        const rows = await this.db.getAllAsync<LearningTargetRow>(
+            `
+SELECT ${learningTargetColumns}
+FROM learning_targets
+WHERE user_id = ?
+  AND status = 'active'
+  AND (due_at IS NULL OR due_at <= ?)
+ORDER BY due_at ASC, priority DESC
+LIMIT ?
+`,
+            [userId, dateToText(now), limit]
+        );
+
+        return rows.map(mapLearningTarget);
     }
 
     async listByKnowledgePoint(
         userId: string,
         knowledgePointId: string
     ): Promise<LearningTarget[]> {
-        return this.orm
-            .select()
-            .from(learningTargets)
-            .where(
-                and(
-                    eq(learningTargets.userId, userId),
-                    eq(learningTargets.knowledgePointId, knowledgePointId)
-                )
-            )
-            .orderBy(
-                asc(learningTargets.status),
-                asc(learningTargets.dueAt),
-                desc(learningTargets.priority)
-            )
-            .all()
-            .map(mapLearningTarget);
+        const rows = await this.db.getAllAsync<LearningTargetRow>(
+            `
+SELECT ${learningTargetColumns}
+FROM learning_targets
+WHERE user_id = ?
+  AND knowledge_point_id = ?
+ORDER BY status ASC, due_at ASC, priority DESC
+`,
+            [userId, knowledgePointId]
+        );
+
+        return rows.map(mapLearningTarget);
     }
 
     async linkEntity(link: LearningTargetEntity): Promise<void> {
-        this.orm
-            .insert(learningTargetEntities)
-            .values({
-                learningTargetId: link.learningTargetId,
-                entityType: link.entityType,
-                entityId: link.entityId,
-                role: link.role,
-            })
-            .onConflictDoNothing()
-            .run();
+        await this.db.runAsync(
+            `
+INSERT OR IGNORE INTO learning_target_entities (
+  learning_target_id, entity_type, entity_id, role
+)
+VALUES (?, ?, ?, ?)
+`,
+            [link.learningTargetId, link.entityType, link.entityId, link.role]
+        );
     }
 
     async listEntities(
         learningTargetId: string
     ): Promise<LearningTargetEntity[]> {
-        return this.orm
-            .select()
-            .from(learningTargetEntities)
-            .where(
-                eq(learningTargetEntities.learningTargetId, learningTargetId)
-            )
-            .orderBy(
-                asc(learningTargetEntities.entityType),
-                asc(learningTargetEntities.role)
-            )
-            .all()
-            .map(mapLearningTargetEntity);
+        const rows = await this.db.getAllAsync<LearningTargetEntityRow>(
+            `
+SELECT ${learningTargetEntityColumns}
+FROM learning_target_entities
+WHERE learning_target_id = ?
+ORDER BY entity_type ASC, role ASC
+`,
+            [learningTargetId]
+        );
+
+        return rows.map(mapLearningTargetEntity);
     }
 
     async listEntitiesForTargets(
@@ -315,33 +423,23 @@ export class LearningTargetDao {
             return [];
         }
 
-        return this.orm
-            .select()
-            .from(learningTargetEntities)
-            .where(
-                inArray(
-                    learningTargetEntities.learningTargetId,
-                    learningTargetIds
-                )
-            )
-            .orderBy(
-                asc(learningTargetEntities.learningTargetId),
-                asc(learningTargetEntities.entityType),
-                asc(learningTargetEntities.role)
-            )
-            .all()
-            .map(mapLearningTargetEntity);
+        const placeholders = learningTargetIds.map(() => "?").join(", ");
+        const rows = await this.db.getAllAsync<LearningTargetEntityRow>(
+            `
+SELECT ${learningTargetEntityColumns}
+FROM learning_target_entities
+WHERE learning_target_id IN (${placeholders})
+ORDER BY learning_target_id ASC, entity_type ASC, role ASC
+`,
+            learningTargetIds
+        );
+
+        return rows.map(mapLearningTargetEntity);
     }
 }
 
 export class PracticeDao {
-    private readonly db;
-    private readonly orm;
-
-    constructor(db: SQLiteDatabase) {
-        this.db = db;
-        this.orm = getDrizzleDb(db);
-    }
+    constructor(private readonly db: SQLiteDatabase) {}
 
     async upsertPracticeItem(item: PracticeItem): Promise<void> {
         const values = {
@@ -355,30 +453,44 @@ export class PracticeDao {
             expiresAt: optionalDateToText(item.expiresAt),
         };
 
-        this.orm
-            .insert(practiceItems)
-            .values(values)
-            .onConflictDoUpdate({
-                target: practiceItems.id,
-                set: {
-                    type: values.type,
-                    promptJson: values.promptJson,
-                    expectedAnswerJson: values.expectedAnswerJson,
-                    acceptableAnswersJson: values.acceptableAnswersJson,
-                    contextSnapshotJson: values.contextSnapshotJson,
-                    generatedAt: values.generatedAt,
-                    expiresAt: values.expiresAt,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO practice_items (
+  id, type, prompt_json, expected_answer_json, acceptable_answers_json,
+  context_snapshot_json, generated_at, expires_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  type = excluded.type,
+  prompt_json = excluded.prompt_json,
+  expected_answer_json = excluded.expected_answer_json,
+  acceptable_answers_json = excluded.acceptable_answers_json,
+  context_snapshot_json = excluded.context_snapshot_json,
+  generated_at = excluded.generated_at,
+  expires_at = excluded.expires_at
+`,
+            [
+                values.id,
+                values.type,
+                values.promptJson,
+                values.expectedAnswerJson,
+                values.acceptableAnswersJson,
+                values.contextSnapshotJson,
+                values.generatedAt,
+                values.expiresAt,
+            ]
+        );
     }
 
     async getPracticeItemById(id: string): Promise<PracticeItem | null> {
-        const row = this.orm
-            .select()
-            .from(practiceItems)
-            .where(eq(practiceItems.id, id))
-            .get();
+        const row = await this.db.getFirstAsync<PracticeItemRow>(
+            `
+SELECT ${practiceItemColumns}
+FROM practice_items
+WHERE id = ?
+`,
+            [id]
+        );
         return row ? mapPracticeItem(row) : null;
     }
 
@@ -426,33 +538,31 @@ LIMIT ?
     }
 
     async linkTarget(link: PracticeItemTarget): Promise<void> {
-        this.orm
-            .insert(practiceItemTargets)
-            .values({
-                practiceItemId: link.practiceItemId,
-                learningTargetId: link.learningTargetId,
-                weight: link.weight,
-            })
-            .onConflictDoUpdate({
-                target: [
-                    practiceItemTargets.practiceItemId,
-                    practiceItemTargets.learningTargetId,
-                ],
-                set: {
-                    weight: link.weight,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO practice_item_targets (
+  practice_item_id, learning_target_id, weight
+)
+VALUES (?, ?, ?)
+ON CONFLICT(practice_item_id, learning_target_id) DO UPDATE SET
+  weight = excluded.weight
+`,
+            [link.practiceItemId, link.learningTargetId, link.weight]
+        );
     }
 
     async listTargets(practiceItemId: string): Promise<PracticeItemTarget[]> {
-        return this.orm
-            .select()
-            .from(practiceItemTargets)
-            .where(eq(practiceItemTargets.practiceItemId, practiceItemId))
-            .orderBy(desc(practiceItemTargets.weight))
-            .all()
-            .map(mapPracticeItemTarget);
+        const rows = await this.db.getAllAsync<PracticeItemTargetRow>(
+            `
+SELECT ${practiceItemTargetColumns}
+FROM practice_item_targets
+WHERE practice_item_id = ?
+ORDER BY weight DESC
+`,
+            [practiceItemId]
+        );
+
+        return rows.map(mapPracticeItemTarget);
     }
 
     async getPracticeStatsForTargets(
@@ -486,25 +596,33 @@ WHERE practice_item_targets.learning_target_id IN (${placeholders})
     }
 
     async insertUserResponse(response: UserResponse): Promise<void> {
-        this.orm
-            .insert(userResponses)
-            .values({
-                id: response.id,
-                practiceItemId: response.practiceItemId,
-                userId: response.userId,
-                answerJson: jsonToText(response.answer),
-                submittedAt: dateToText(response.submittedAt),
-                feedbackJson: optionalJsonToText(response.feedback),
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO user_responses (
+  id, practice_item_id, user_id, answer_json, submitted_at, feedback_json
+)
+VALUES (?, ?, ?, ?, ?, ?)
+`,
+            [
+                response.id,
+                response.practiceItemId,
+                response.userId,
+                jsonToText(response.answer),
+                dateToText(response.submittedAt),
+                optionalJsonToText(response.feedback),
+            ]
+        );
     }
 
     async getUserResponseById(id: string): Promise<UserResponse | null> {
-        const row = this.orm
-            .select()
-            .from(userResponses)
-            .where(eq(userResponses.id, id))
-            .get();
+        const row = await this.db.getFirstAsync<UserResponseRow>(
+            `
+SELECT ${userResponseColumns}
+FROM user_responses
+WHERE id = ?
+`,
+            [id]
+        );
         return row ? mapUserResponse(row) : null;
     }
 
@@ -513,34 +631,40 @@ WHERE practice_item_targets.learning_target_id IN (${placeholders})
         userId: string,
         limit = 20
     ): Promise<UserResponse[]> {
-        return this.orm
-            .select()
-            .from(userResponses)
-            .where(
-                and(
-                    eq(userResponses.practiceItemId, practiceItemId),
-                    eq(userResponses.userId, userId)
-                )
-            )
-            .orderBy(desc(userResponses.submittedAt))
-            .limit(limit)
-            .all()
-            .map(mapUserResponse);
+        const rows = await this.db.getAllAsync<UserResponseRow>(
+            `
+SELECT ${userResponseColumns}
+FROM user_responses
+WHERE practice_item_id = ?
+  AND user_id = ?
+ORDER BY submitted_at DESC
+LIMIT ?
+`,
+            [practiceItemId, userId, limit]
+        );
+
+        return rows.map(mapUserResponse);
     }
 
     async insertLearningEvidence(evidence: LearningEvidence): Promise<void> {
-        this.orm
-            .insert(learningEvidence)
-            .values({
-                id: evidence.id,
-                userResponseId: evidence.userResponseId,
-                learningTargetId: evidence.learningTargetId,
-                result: evidence.result,
-                confidence: evidence.confidence ?? null,
-                errorJson: optionalJsonToText(evidence.error),
-                createdAt: dateToText(evidence.createdAt),
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO learning_evidence (
+  id, user_response_id, learning_target_id, result, confidence, error_json,
+  created_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`,
+            [
+                evidence.id,
+                evidence.userResponseId,
+                evidence.learningTargetId,
+                evidence.result,
+                evidence.confidence ?? null,
+                optionalJsonToText(evidence.error),
+                dateToText(evidence.createdAt),
+            ]
+        );
     }
 
     async listEvidenceForResponses(
@@ -550,26 +674,35 @@ WHERE practice_item_targets.learning_target_id IN (${placeholders})
             return [];
         }
 
-        return this.orm
-            .select()
-            .from(learningEvidence)
-            .where(inArray(learningEvidence.userResponseId, userResponseIds))
-            .orderBy(desc(learningEvidence.createdAt))
-            .all()
-            .map(mapLearningEvidence);
+        const placeholders = userResponseIds.map(() => "?").join(", ");
+        const rows = await this.db.getAllAsync<LearningEvidenceRow>(
+            `
+SELECT ${learningEvidenceColumns}
+FROM learning_evidence
+WHERE user_response_id IN (${placeholders})
+ORDER BY created_at DESC
+`,
+            userResponseIds
+        );
+
+        return rows.map(mapLearningEvidence);
     }
 
     async listEvidenceForTarget(
         learningTargetId: string,
         limit = 50
     ): Promise<LearningEvidence[]> {
-        return this.orm
-            .select()
-            .from(learningEvidence)
-            .where(eq(learningEvidence.learningTargetId, learningTargetId))
-            .orderBy(desc(learningEvidence.createdAt))
-            .limit(limit)
-            .all()
-            .map(mapLearningEvidence);
+        const rows = await this.db.getAllAsync<LearningEvidenceRow>(
+            `
+SELECT ${learningEvidenceColumns}
+FROM learning_evidence
+WHERE learning_target_id = ?
+ORDER BY created_at DESC
+LIMIT ?
+`,
+            [learningTargetId, limit]
+        );
+
+        return rows.map(mapLearningEvidence);
     }
 }

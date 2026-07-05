@@ -1,26 +1,11 @@
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { SQLiteDatabase } from "expo-sqlite";
 
-import { getDrizzleDb } from "@/data/database/orm";
-import {
-    concepts,
-    expressions,
-    inquiries,
-    inquiryMessages,
-    knowledgePointEntities,
-    knowledgePoints,
-    knowledgePointUtterances,
-    patterns,
-    relations,
-} from "@/data/database/schema";
 import {
     dateToText,
     jsonToText,
     optionalJsonToText,
-    optionalTextToJson,
     textToDate,
     textToJson,
-    textToJsonWithFallback,
 } from "@/data/database/serialization";
 import type {
     Concept,
@@ -36,15 +21,243 @@ import type {
     PatternSlot,
 } from "@/types/domain";
 
-type InquiryRow = typeof inquiries.$inferSelect;
-type InquiryMessageRow = typeof inquiryMessages.$inferSelect;
-type ConceptRow = typeof concepts.$inferSelect;
-type ExpressionRow = typeof expressions.$inferSelect;
-type PatternRow = typeof patterns.$inferSelect;
-type KnowledgePointRow = typeof knowledgePoints.$inferSelect;
-type KnowledgePointUtteranceRow = typeof knowledgePointUtterances.$inferSelect;
-type KnowledgePointEntityRow = typeof knowledgePointEntities.$inferSelect;
-type RelationRow = typeof relations.$inferSelect;
+type InquiryRow = {
+    id: string;
+    sessionId: string;
+    title: string;
+    userNeed: string;
+    contextSummary: string;
+    sourceLanguage: string | null;
+    targetLanguage: string;
+    status: Inquiry["status"];
+    createdFrom: Inquiry["createdFrom"];
+    createdAt: string;
+    updatedAt: string;
+};
+
+type InquiryMessageRow = {
+    inquiryId: string;
+    messageId: string;
+    role: InquiryMessage["role"];
+    sequence: number | null;
+};
+
+type ConceptRow = {
+    id: string;
+    canonicalLabel: string;
+    languageHint: string | null;
+    definition: string | null;
+    domainJson: string | null;
+    aliasesJson: string | null;
+    disambiguationNote: string | null;
+    status: Concept["status"];
+    createdAt: string;
+    updatedAt: string;
+};
+
+type ExpressionRow = {
+    id: string;
+    text: string;
+    language: string;
+    normalizedText: string;
+    partOfSpeech: string | null;
+    register: string | null;
+    region: string | null;
+    domainJson: string | null;
+    meaningNote: string | null;
+    usageNote: string | null;
+    status: Expression["status"];
+    createdAt: string;
+    updatedAt: string;
+};
+
+type PatternRow = {
+    id: string;
+    template: string;
+    language: string;
+    slotsJson: string;
+    explanation: string | null;
+    usageScope: string | null;
+    confidence: number;
+    source: Pattern["source"];
+    status: Pattern["status"];
+    createdAt: string;
+    updatedAt: string;
+};
+
+type KnowledgePointRow = {
+    id: string;
+    inquiryId: string;
+    title: string;
+    objective: string;
+    contextSnapshotJson: string;
+    explanation: string | null;
+    status: KnowledgePoint["status"];
+    createdAt: string;
+    updatedAt: string;
+};
+
+type KnowledgePointUtteranceRow = {
+    id: string;
+    knowledgePointId: string;
+    text: string;
+    language: string;
+    role: KnowledgePointUtterance["role"];
+    usageNote: string | null;
+    createdAt: string;
+};
+
+type KnowledgePointEntityRow = {
+    knowledgePointId: string;
+    entityType: KnowledgePointEntity["entityType"];
+    entityId: string;
+    role: KnowledgePointEntity["role"];
+};
+
+type RelationRow = {
+    id: string;
+    fromType: Relation["fromType"];
+    fromId: string;
+    toType: Relation["toType"];
+    toId: string;
+    type: Relation["type"];
+    direction: Relation["direction"];
+    confidence: number;
+    source: Relation["source"];
+    status: Relation["status"];
+    evidenceJson: string | null;
+    createdAt: string;
+    updatedAt: string;
+};
+
+const inquiryColumns = `
+  id,
+  session_id AS sessionId,
+  title,
+  user_need AS userNeed,
+  context_summary AS contextSummary,
+  source_language AS sourceLanguage,
+  target_language AS targetLanguage,
+  status,
+  created_from AS createdFrom,
+  created_at AS createdAt,
+  updated_at AS updatedAt
+`;
+
+const inquiryMessageColumns = `
+  inquiry_id AS inquiryId,
+  message_id AS messageId,
+  role,
+  sequence
+`;
+
+const conceptColumns = `
+  id,
+  canonical_label AS canonicalLabel,
+  language_hint AS languageHint,
+  definition,
+  domain_json AS domainJson,
+  aliases_json AS aliasesJson,
+  disambiguation_note AS disambiguationNote,
+  status,
+  created_at AS createdAt,
+  updated_at AS updatedAt
+`;
+
+const expressionColumns = `
+  id,
+  text,
+  language,
+  normalized_text AS normalizedText,
+  part_of_speech AS partOfSpeech,
+  register,
+  region,
+  domain_json AS domainJson,
+  meaning_note AS meaningNote,
+  usage_note AS usageNote,
+  status,
+  created_at AS createdAt,
+  updated_at AS updatedAt
+`;
+
+const patternColumns = `
+  id,
+  template,
+  language,
+  slots_json AS slotsJson,
+  explanation,
+  usage_scope AS usageScope,
+  confidence,
+  source,
+  status,
+  created_at AS createdAt,
+  updated_at AS updatedAt
+`;
+
+const knowledgePointColumns = `
+  id,
+  inquiry_id AS inquiryId,
+  title,
+  objective,
+  context_snapshot_json AS contextSnapshotJson,
+  explanation,
+  status,
+  created_at AS createdAt,
+  updated_at AS updatedAt
+`;
+
+const knowledgePointUtteranceColumns = `
+  id,
+  knowledge_point_id AS knowledgePointId,
+  text,
+  language,
+  role,
+  usage_note AS usageNote,
+  created_at AS createdAt
+`;
+
+const knowledgePointEntityColumns = `
+  knowledge_point_id AS knowledgePointId,
+  entity_type AS entityType,
+  entity_id AS entityId,
+  role
+`;
+
+const relationColumns = `
+  id,
+  from_type AS fromType,
+  from_id AS fromId,
+  to_type AS toType,
+  to_id AS toId,
+  type,
+  direction,
+  confidence,
+  source,
+  status,
+  evidence_json AS evidenceJson,
+  created_at AS createdAt,
+  updated_at AS updatedAt
+`;
+
+function parseJsonOrFallback<T>(value: string, fallback: T): T {
+    try {
+        return textToJson<T>(value);
+    } catch (error) {
+        console.warn("Failed to parse persisted knowledge JSON value.", error);
+        return fallback;
+    }
+}
+
+function parseOptionalJsonOrFallback<T>(
+    value: string | null | undefined,
+    fallback: T | undefined
+): T | undefined {
+    if (value == null) {
+        return undefined;
+    }
+
+    return parseJsonOrFallback<T | undefined>(value, fallback);
+}
 
 function mapInquiry(row: InquiryRow): Inquiry {
     return {
@@ -77,8 +290,8 @@ function mapConcept(row: ConceptRow): Concept {
         canonicalLabel: row.canonicalLabel,
         languageHint: row.languageHint ?? undefined,
         definition: row.definition ?? undefined,
-        domain: optionalTextToJson<string[]>(row.domainJson),
-        aliases: optionalTextToJson<string[]>(row.aliasesJson),
+        domain: parseOptionalJsonOrFallback<string[]>(row.domainJson, []),
+        aliases: parseOptionalJsonOrFallback<string[]>(row.aliasesJson, []),
         disambiguationNote: row.disambiguationNote ?? undefined,
         status: row.status,
         createdAt: textToDate(row.createdAt),
@@ -95,7 +308,7 @@ function mapExpression(row: ExpressionRow): Expression {
         partOfSpeech: row.partOfSpeech ?? undefined,
         register: row.register ?? undefined,
         region: row.region ?? undefined,
-        domain: optionalTextToJson<string[]>(row.domainJson),
+        domain: parseOptionalJsonOrFallback<string[]>(row.domainJson, []),
         meaningNote: row.meaningNote ?? undefined,
         usageNote: row.usageNote ?? undefined,
         status: row.status,
@@ -109,7 +322,7 @@ function mapPattern(row: PatternRow): Pattern {
         id: row.id,
         template: row.template,
         language: row.language,
-        slots: textToJson<PatternSlot[]>(row.slotsJson),
+        slots: parseJsonOrFallback<PatternSlot[]>(row.slotsJson, []),
         explanation: row.explanation ?? undefined,
         usageScope: row.usageScope ?? undefined,
         confidence: row.confidence,
@@ -126,7 +339,7 @@ function mapKnowledgePoint(row: KnowledgePointRow): KnowledgePoint {
         inquiryId: row.inquiryId,
         title: row.title,
         objective: row.objective,
-        contextSnapshot: textToJsonWithFallback<Record<string, unknown>>(
+        contextSnapshot: parseJsonOrFallback<Record<string, unknown>>(
             row.contextSnapshotJson,
             {}
         ),
@@ -174,7 +387,10 @@ function mapRelation(row: RelationRow): Relation {
         confidence: row.confidence,
         source: row.source,
         status: row.status,
-        evidence: optionalTextToJson<Record<string, unknown>>(row.evidenceJson),
+        evidence: parseOptionalJsonOrFallback<Record<string, unknown>>(
+            row.evidenceJson,
+            undefined
+        ),
         createdAt: textToDate(row.createdAt),
         updatedAt: textToDate(row.updatedAt),
     };
@@ -195,11 +411,7 @@ function conceptMatchesLabels(concept: Concept, labels: Set<string>) {
 }
 
 export class InquiryDao {
-    private readonly orm;
-
-    constructor(db: SQLiteDatabase) {
-        this.orm = getDrizzleDb(db);
-    }
+    constructor(private readonly db: SQLiteDatabase) {}
 
     async upsert(inquiry: Inquiry): Promise<void> {
         const values = {
@@ -216,74 +428,98 @@ export class InquiryDao {
             updatedAt: dateToText(inquiry.updatedAt),
         };
 
-        this.orm
-            .insert(inquiries)
-            .values(values)
-            .onConflictDoUpdate({
-                target: inquiries.id,
-                set: values,
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO inquiries (
+  id, session_id, title, user_need, context_summary, source_language,
+  target_language, status, created_from, created_at, updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  session_id = excluded.session_id,
+  title = excluded.title,
+  user_need = excluded.user_need,
+  context_summary = excluded.context_summary,
+  source_language = excluded.source_language,
+  target_language = excluded.target_language,
+  status = excluded.status,
+  created_from = excluded.created_from,
+  created_at = excluded.created_at,
+  updated_at = excluded.updated_at
+`,
+            [
+                values.id,
+                values.sessionId,
+                values.title,
+                values.userNeed,
+                values.contextSummary,
+                values.sourceLanguage,
+                values.targetLanguage,
+                values.status,
+                values.createdFrom,
+                values.createdAt,
+                values.updatedAt,
+            ]
+        );
     }
 
     async linkMessage(link: InquiryMessage): Promise<void> {
-        this.orm
-            .insert(inquiryMessages)
-            .values({
-                inquiryId: link.inquiryId,
-                messageId: link.messageId,
-                role: link.role,
-                sequence: link.sequence ?? null,
-            })
-            .onConflictDoUpdate({
-                target: [
-                    inquiryMessages.inquiryId,
-                    inquiryMessages.messageId,
-                    inquiryMessages.role,
-                ],
-                set: {
-                    sequence: link.sequence ?? null,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO inquiry_messages (
+  inquiry_id, message_id, role, sequence
+)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(inquiry_id, message_id, role) DO UPDATE SET
+  sequence = excluded.sequence
+`,
+            [link.inquiryId, link.messageId, link.role, link.sequence ?? null]
+        );
     }
 
     async getById(id: string): Promise<Inquiry | null> {
-        const row = this.orm
-            .select()
-            .from(inquiries)
-            .where(eq(inquiries.id, id))
-            .get();
+        const row = await this.db.getFirstAsync<InquiryRow>(
+            `
+SELECT ${inquiryColumns}
+FROM inquiries
+WHERE id = ?
+`,
+            [id]
+        );
         return row ? mapInquiry(row) : null;
     }
 
     async listBySessionId(sessionId: string): Promise<Inquiry[]> {
-        return this.orm
-            .select()
-            .from(inquiries)
-            .where(eq(inquiries.sessionId, sessionId))
-            .orderBy(asc(inquiries.createdAt))
-            .all()
-            .map(mapInquiry);
+        const rows = await this.db.getAllAsync<InquiryRow>(
+            `
+SELECT ${inquiryColumns}
+FROM inquiries
+WHERE session_id = ?
+ORDER BY created_at ASC
+`,
+            [sessionId]
+        );
+
+        return rows.map(mapInquiry);
     }
 
     async getMessageLinks(inquiryId: string): Promise<InquiryMessage[]> {
-        return this.orm
-            .select()
-            .from(inquiryMessages)
-            .where(eq(inquiryMessages.inquiryId, inquiryId))
-            .orderBy(asc(inquiryMessages.sequence))
-            .all()
-            .map(mapInquiryMessage);
+        const rows = await this.db.getAllAsync<InquiryMessageRow>(
+            `
+SELECT ${inquiryMessageColumns}
+FROM inquiry_messages
+WHERE inquiry_id = ?
+ORDER BY sequence ASC
+`,
+            [inquiryId]
+        );
+
+        return rows.map(mapInquiryMessage);
     }
 }
 
 export class KnowledgeEntityDao {
-    private readonly orm;
-
-    constructor(db: SQLiteDatabase) {
-        this.orm = getDrizzleDb(db);
-    }
+    constructor(private readonly db: SQLiteDatabase) {}
 
     async upsertConcept(concept: Concept): Promise<void> {
         const values = {
@@ -299,31 +535,47 @@ export class KnowledgeEntityDao {
             updatedAt: dateToText(concept.updatedAt),
         };
 
-        this.orm
-            .insert(concepts)
-            .values(values)
-            .onConflictDoUpdate({
-                target: concepts.id,
-                set: {
-                    canonicalLabel: values.canonicalLabel,
-                    languageHint: values.languageHint,
-                    definition: values.definition,
-                    domainJson: values.domainJson,
-                    aliasesJson: values.aliasesJson,
-                    disambiguationNote: values.disambiguationNote,
-                    status: values.status,
-                    updatedAt: values.updatedAt,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO concepts (
+  id, canonical_label, language_hint, definition, domain_json, aliases_json,
+  disambiguation_note, status, created_at, updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  canonical_label = excluded.canonical_label,
+  language_hint = excluded.language_hint,
+  definition = excluded.definition,
+  domain_json = excluded.domain_json,
+  aliases_json = excluded.aliases_json,
+  disambiguation_note = excluded.disambiguation_note,
+  status = excluded.status,
+  updated_at = excluded.updated_at
+`,
+            [
+                values.id,
+                values.canonicalLabel,
+                values.languageHint,
+                values.definition,
+                values.domainJson,
+                values.aliasesJson,
+                values.disambiguationNote,
+                values.status,
+                values.createdAt,
+                values.updatedAt,
+            ]
+        );
     }
 
     async getConceptById(id: string): Promise<Concept | null> {
-        const row = this.orm
-            .select()
-            .from(concepts)
-            .where(eq(concepts.id, id))
-            .get();
+        const row = await this.db.getFirstAsync<ConceptRow>(
+            `
+SELECT ${conceptColumns}
+FROM concepts
+WHERE id = ?
+`,
+            [id]
+        );
         return row ? mapConcept(row) : null;
     }
 
@@ -341,20 +593,25 @@ export class KnowledgeEntityDao {
 
         const directRows =
             lookupLabels.length > 0
-                ? this.orm
-                      .select()
-                      .from(concepts)
-                      .where(inArray(concepts.canonicalLabel, lookupLabels))
-                      .orderBy(desc(concepts.updatedAt))
-                      .limit(limit)
-                      .all()
+                ? await this.db.getAllAsync<ConceptRow>(
+                      `
+SELECT ${conceptColumns}
+FROM concepts
+WHERE canonical_label IN (${lookupLabels.map(() => "?").join(", ")})
+ORDER BY updated_at DESC
+LIMIT ?
+`,
+                      [...lookupLabels, limit]
+                  )
                 : [];
-        const recentRows = this.orm
-            .select()
-            .from(concepts)
-            .orderBy(desc(concepts.updatedAt))
-            .limit(200)
-            .all();
+        const recentRows = await this.db.getAllAsync<ConceptRow>(
+            `
+SELECT ${conceptColumns}
+FROM concepts
+ORDER BY updated_at DESC
+LIMIT 200
+`
+        );
         const matchedConcepts = new Map<string, Concept>();
 
         for (const row of [...directRows, ...recentRows]) {
@@ -385,34 +642,53 @@ export class KnowledgeEntityDao {
             updatedAt: dateToText(expression.updatedAt),
         };
 
-        this.orm
-            .insert(expressions)
-            .values(values)
-            .onConflictDoUpdate({
-                target: expressions.id,
-                set: {
-                    text: values.text,
-                    language: values.language,
-                    normalizedText: values.normalizedText,
-                    partOfSpeech: values.partOfSpeech,
-                    register: values.register,
-                    region: values.region,
-                    domainJson: values.domainJson,
-                    meaningNote: values.meaningNote,
-                    usageNote: values.usageNote,
-                    status: values.status,
-                    updatedAt: values.updatedAt,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO expressions (
+  id, text, language, normalized_text, part_of_speech, register, region,
+  domain_json, meaning_note, usage_note, status, created_at, updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  text = excluded.text,
+  language = excluded.language,
+  normalized_text = excluded.normalized_text,
+  part_of_speech = excluded.part_of_speech,
+  register = excluded.register,
+  region = excluded.region,
+  domain_json = excluded.domain_json,
+  meaning_note = excluded.meaning_note,
+  usage_note = excluded.usage_note,
+  status = excluded.status,
+  updated_at = excluded.updated_at
+`,
+            [
+                values.id,
+                values.text,
+                values.language,
+                values.normalizedText,
+                values.partOfSpeech,
+                values.register,
+                values.region,
+                values.domainJson,
+                values.meaningNote,
+                values.usageNote,
+                values.status,
+                values.createdAt,
+                values.updatedAt,
+            ]
+        );
     }
 
     async getExpressionById(id: string): Promise<Expression | null> {
-        const row = this.orm
-            .select()
-            .from(expressions)
-            .where(eq(expressions.id, id))
-            .get();
+        const row = await this.db.getFirstAsync<ExpressionRow>(
+            `
+SELECT ${expressionColumns}
+FROM expressions
+WHERE id = ?
+`,
+            [id]
+        );
         return row ? mapExpression(row) : null;
     }
 
@@ -421,12 +697,16 @@ export class KnowledgeEntityDao {
             return [];
         }
 
-        return this.orm
-            .select()
-            .from(expressions)
-            .where(inArray(expressions.id, ids))
-            .all()
-            .map(mapExpression);
+        const rows = await this.db.getAllAsync<ExpressionRow>(
+            `
+SELECT ${expressionColumns}
+FROM expressions
+WHERE id IN (${ids.map(() => "?").join(", ")})
+`,
+            ids
+        );
+
+        return rows.map(mapExpression);
     }
 
     async findExpressions(
@@ -434,19 +714,19 @@ export class KnowledgeEntityDao {
         normalizedText: string,
         limit = 20
     ): Promise<Expression[]> {
-        return this.orm
-            .select()
-            .from(expressions)
-            .where(
-                and(
-                    eq(expressions.language, language),
-                    eq(expressions.normalizedText, normalizedText)
-                )
-            )
-            .orderBy(desc(expressions.updatedAt))
-            .limit(limit)
-            .all()
-            .map(mapExpression);
+        const rows = await this.db.getAllAsync<ExpressionRow>(
+            `
+SELECT ${expressionColumns}
+FROM expressions
+WHERE language = ?
+  AND normalized_text = ?
+ORDER BY updated_at DESC
+LIMIT ?
+`,
+            [language, normalizedText, limit]
+        );
+
+        return rows.map(mapExpression);
     }
 
     async upsertPattern(pattern: Pattern): Promise<void> {
@@ -464,42 +744,55 @@ export class KnowledgeEntityDao {
             updatedAt: dateToText(pattern.updatedAt),
         };
 
-        this.orm
-            .insert(patterns)
-            .values(values)
-            .onConflictDoUpdate({
-                target: patterns.id,
-                set: {
-                    template: values.template,
-                    language: values.language,
-                    slotsJson: values.slotsJson,
-                    explanation: values.explanation,
-                    usageScope: values.usageScope,
-                    confidence: values.confidence,
-                    source: values.source,
-                    status: values.status,
-                    updatedAt: values.updatedAt,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO patterns (
+  id, template, language, slots_json, explanation, usage_scope, confidence,
+  source, status, created_at, updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  template = excluded.template,
+  language = excluded.language,
+  slots_json = excluded.slots_json,
+  explanation = excluded.explanation,
+  usage_scope = excluded.usage_scope,
+  confidence = excluded.confidence,
+  source = excluded.source,
+  status = excluded.status,
+  updated_at = excluded.updated_at
+`,
+            [
+                values.id,
+                values.template,
+                values.language,
+                values.slotsJson,
+                values.explanation,
+                values.usageScope,
+                values.confidence,
+                values.source,
+                values.status,
+                values.createdAt,
+                values.updatedAt,
+            ]
+        );
     }
 
     async getPatternById(id: string): Promise<Pattern | null> {
-        const row = this.orm
-            .select()
-            .from(patterns)
-            .where(eq(patterns.id, id))
-            .get();
+        const row = await this.db.getFirstAsync<PatternRow>(
+            `
+SELECT ${patternColumns}
+FROM patterns
+WHERE id = ?
+`,
+            [id]
+        );
         return row ? mapPattern(row) : null;
     }
 }
 
 export class KnowledgePointDao {
-    private readonly orm;
-
-    constructor(db: SQLiteDatabase) {
-        this.orm = getDrizzleDb(db);
-    }
+    constructor(private readonly db: SQLiteDatabase) {}
 
     async upsert(knowledgePoint: KnowledgePoint): Promise<void> {
         const values = {
@@ -514,41 +807,60 @@ export class KnowledgePointDao {
             updatedAt: dateToText(knowledgePoint.updatedAt),
         };
 
-        this.orm
-            .insert(knowledgePoints)
-            .values(values)
-            .onConflictDoUpdate({
-                target: knowledgePoints.id,
-                set: {
-                    inquiryId: values.inquiryId,
-                    title: values.title,
-                    objective: values.objective,
-                    contextSnapshotJson: values.contextSnapshotJson,
-                    explanation: values.explanation,
-                    status: values.status,
-                    updatedAt: values.updatedAt,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO knowledge_points (
+  id, inquiry_id, title, objective, context_snapshot_json, explanation,
+  status, created_at, updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  inquiry_id = excluded.inquiry_id,
+  title = excluded.title,
+  objective = excluded.objective,
+  context_snapshot_json = excluded.context_snapshot_json,
+  explanation = excluded.explanation,
+  status = excluded.status,
+  updated_at = excluded.updated_at
+`,
+            [
+                values.id,
+                values.inquiryId,
+                values.title,
+                values.objective,
+                values.contextSnapshotJson,
+                values.explanation,
+                values.status,
+                values.createdAt,
+                values.updatedAt,
+            ]
+        );
     }
 
     async getById(id: string): Promise<KnowledgePoint | null> {
-        const row = this.orm
-            .select()
-            .from(knowledgePoints)
-            .where(eq(knowledgePoints.id, id))
-            .get();
+        const row = await this.db.getFirstAsync<KnowledgePointRow>(
+            `
+SELECT ${knowledgePointColumns}
+FROM knowledge_points
+WHERE id = ?
+`,
+            [id]
+        );
         return row ? mapKnowledgePoint(row) : null;
     }
 
     async listByInquiryId(inquiryId: string): Promise<KnowledgePoint[]> {
-        return this.orm
-            .select()
-            .from(knowledgePoints)
-            .where(eq(knowledgePoints.inquiryId, inquiryId))
-            .orderBy(asc(knowledgePoints.createdAt))
-            .all()
-            .map(mapKnowledgePoint);
+        const rows = await this.db.getAllAsync<KnowledgePointRow>(
+            `
+SELECT ${knowledgePointColumns}
+FROM knowledge_points
+WHERE inquiry_id = ?
+ORDER BY created_at ASC
+`,
+            [inquiryId]
+        );
+
+        return rows.map(mapKnowledgePoint);
     }
 
     async upsertUtterance(utterance: KnowledgePointUtterance): Promise<void> {
@@ -562,73 +874,78 @@ export class KnowledgePointDao {
             createdAt: dateToText(utterance.createdAt),
         };
 
-        this.orm
-            .insert(knowledgePointUtterances)
-            .values(values)
-            .onConflictDoUpdate({
-                target: knowledgePointUtterances.id,
-                set: {
-                    knowledgePointId: values.knowledgePointId,
-                    text: values.text,
-                    language: values.language,
-                    role: values.role,
-                    usageNote: values.usageNote,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO knowledge_point_utterances (
+  id, knowledge_point_id, text, language, role, usage_note, created_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  knowledge_point_id = excluded.knowledge_point_id,
+  text = excluded.text,
+  language = excluded.language,
+  role = excluded.role,
+  usage_note = excluded.usage_note
+`,
+            [
+                values.id,
+                values.knowledgePointId,
+                values.text,
+                values.language,
+                values.role,
+                values.usageNote,
+                values.createdAt,
+            ]
+        );
     }
 
     async listUtterances(
         knowledgePointId: string
     ): Promise<KnowledgePointUtterance[]> {
-        return this.orm
-            .select()
-            .from(knowledgePointUtterances)
-            .where(
-                eq(knowledgePointUtterances.knowledgePointId, knowledgePointId)
-            )
-            .orderBy(asc(knowledgePointUtterances.createdAt))
-            .all()
-            .map(mapKnowledgePointUtterance);
+        const rows = await this.db.getAllAsync<KnowledgePointUtteranceRow>(
+            `
+SELECT ${knowledgePointUtteranceColumns}
+FROM knowledge_point_utterances
+WHERE knowledge_point_id = ?
+ORDER BY created_at ASC
+`,
+            [knowledgePointId]
+        );
+
+        return rows.map(mapKnowledgePointUtterance);
     }
 
     async linkEntity(link: KnowledgePointEntity): Promise<void> {
-        this.orm
-            .insert(knowledgePointEntities)
-            .values({
-                knowledgePointId: link.knowledgePointId,
-                entityType: link.entityType,
-                entityId: link.entityId,
-                role: link.role,
-            })
-            .onConflictDoNothing()
-            .run();
+        await this.db.runAsync(
+            `
+INSERT OR IGNORE INTO knowledge_point_entities (
+  knowledge_point_id, entity_type, entity_id, role
+)
+VALUES (?, ?, ?, ?)
+`,
+            [link.knowledgePointId, link.entityType, link.entityId, link.role]
+        );
     }
 
     async listEntities(
         knowledgePointId: string
     ): Promise<KnowledgePointEntity[]> {
-        return this.orm
-            .select()
-            .from(knowledgePointEntities)
-            .where(
-                eq(knowledgePointEntities.knowledgePointId, knowledgePointId)
-            )
-            .orderBy(
-                asc(knowledgePointEntities.entityType),
-                asc(knowledgePointEntities.role)
-            )
-            .all()
-            .map(mapKnowledgePointEntity);
+        const rows = await this.db.getAllAsync<KnowledgePointEntityRow>(
+            `
+SELECT ${knowledgePointEntityColumns}
+FROM knowledge_point_entities
+WHERE knowledge_point_id = ?
+ORDER BY entity_type ASC, role ASC
+`,
+            [knowledgePointId]
+        );
+
+        return rows.map(mapKnowledgePointEntity);
     }
 }
 
 export class RelationDao {
-    private readonly orm;
-
-    constructor(db: SQLiteDatabase) {
-        this.orm = getDrizzleDb(db);
-    }
+    constructor(private readonly db: SQLiteDatabase) {}
 
     async upsert(relation: Relation): Promise<void> {
         const values = {
@@ -647,49 +964,59 @@ export class RelationDao {
             updatedAt: dateToText(relation.updatedAt),
         };
 
-        this.orm
-            .insert(relations)
-            .values(values)
-            .onConflictDoUpdate({
-                target: relations.id,
-                set: {
-                    fromType: values.fromType,
-                    fromId: values.fromId,
-                    toType: values.toType,
-                    toId: values.toId,
-                    type: values.type,
-                    direction: values.direction,
-                    confidence: values.confidence,
-                    source: values.source,
-                    status: values.status,
-                    evidenceJson: values.evidenceJson,
-                    updatedAt: values.updatedAt,
-                },
-            })
-            .run();
+        await this.db.runAsync(
+            `
+INSERT INTO relations (
+  id, from_type, from_id, to_type, to_id, type, direction, confidence,
+  source, status, evidence_json, created_at, updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  from_type = excluded.from_type,
+  from_id = excluded.from_id,
+  to_type = excluded.to_type,
+  to_id = excluded.to_id,
+  type = excluded.type,
+  direction = excluded.direction,
+  confidence = excluded.confidence,
+  source = excluded.source,
+  status = excluded.status,
+  evidence_json = excluded.evidence_json,
+  updated_at = excluded.updated_at
+`,
+            [
+                values.id,
+                values.fromType,
+                values.fromId,
+                values.toType,
+                values.toId,
+                values.type,
+                values.direction,
+                values.confidence,
+                values.source,
+                values.status,
+                values.evidenceJson,
+                values.createdAt,
+                values.updatedAt,
+            ]
+        );
     }
 
     async listForEntity(
         entityType: RelationEntityType,
         entityId: string
     ): Promise<Relation[]> {
-        return this.orm
-            .select()
-            .from(relations)
-            .where(
-                or(
-                    and(
-                        eq(relations.fromType, entityType),
-                        eq(relations.fromId, entityId)
-                    ),
-                    and(
-                        eq(relations.toType, entityType),
-                        eq(relations.toId, entityId)
-                    )
-                )
-            )
-            .orderBy(desc(relations.updatedAt))
-            .all()
-            .map(mapRelation);
+        const rows = await this.db.getAllAsync<RelationRow>(
+            `
+SELECT ${relationColumns}
+FROM relations
+WHERE (from_type = ? AND from_id = ?)
+   OR (to_type = ? AND to_id = ?)
+ORDER BY updated_at DESC
+`,
+            [entityType, entityId, entityType, entityId]
+        );
+
+        return rows.map(mapRelation);
     }
 }

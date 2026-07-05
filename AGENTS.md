@@ -10,3 +10,7 @@ When writing code related to data model, read this doc beforehand.
 
 ## Code format
 enforce .prettierrc styling
+
+## LLM
+### structured output
+refer to ./json-schema-generation-rules.md for guidance
