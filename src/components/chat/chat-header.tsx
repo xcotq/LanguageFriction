@@ -8,12 +8,12 @@ import type {
     ChatSessionScreenStatus,
 } from "@/hooks/index-chat-session-types";
 
-function endButtonLabel(
+function extractionPreviewButtonLabel(
     sessionStatus: ChatSessionScreenStatus,
     operationStatus: ChatOperationStatus
 ) {
-    if (operationStatus === "extracting") {
-        return "Extracting...";
+    if (operationStatus === "generating_preview") {
+        return "Generating...";
     }
 
     if (sessionStatus === "closed") {
@@ -24,7 +24,7 @@ function endButtonLabel(
         return "Archived";
     }
 
-    return "End";
+    return "Preview";
 }
 
 export function ChatHeader({
@@ -33,10 +33,10 @@ export function ChatHeader({
     operationStatus,
     sessionLabel,
     workflowLabel,
-    endSessionActionStatus,
+    generateExtractionPreviewActionStatus,
     createSessionActionStatus,
     onCreateSession,
-    onEndSession,
+    onGenerateExtractionPreview,
     onOpenHistory,
 }: {
     sessionExists: boolean;
@@ -44,13 +44,14 @@ export function ChatHeader({
     operationStatus: ChatOperationStatus;
     sessionLabel: string;
     workflowLabel: string;
-    endSessionActionStatus: ChatActionStatus;
+    generateExtractionPreviewActionStatus: ChatActionStatus;
     createSessionActionStatus: ChatActionStatus;
     onCreateSession: () => void;
-    onEndSession: () => void;
+    onGenerateExtractionPreview: () => void;
     onOpenHistory: () => void;
 }) {
-    const endSessionDisabled = endSessionActionStatus !== "enabled";
+    const generateExtractionPreviewDisabled =
+        generateExtractionPreviewActionStatus !== "enabled";
     const createSessionDisabled = createSessionActionStatus !== "enabled";
 
     return (
@@ -68,21 +69,26 @@ export function ChatHeader({
                 {sessionExists ? (
                     <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel="End this session"
-                        onPress={onEndSession}
-                        disabled={endSessionDisabled}
+                        accessibilityLabel="Generate extraction preview"
+                        onPress={onGenerateExtractionPreview}
+                        disabled={generateExtractionPreviewDisabled}
                         style={({ pressed }) => [
-                            styles.endButton,
+                            styles.previewButton,
                             pressed && styles.pressed,
-                            endSessionDisabled && styles.disabled,
-                            sessionStatus !== "active" && styles.inactiveButton,
+                            generateExtractionPreviewDisabled &&
+                                styles.disabled,
+                            sessionStatus !== "active" &&
+                                styles.inactivePreviewButton,
                         ]}
                     >
                         <ThemedText
                             type="smallBold"
-                            style={styles.endButtonText}
+                            style={styles.previewButtonText}
                         >
-                            {endButtonLabel(sessionStatus, operationStatus)}
+                            {extractionPreviewButtonLabel(
+                                sessionStatus,
+                                operationStatus
+                            )}
                         </ThemedText>
                     </Pressable>
                 ) : null}
@@ -144,21 +150,21 @@ const styles = StyleSheet.create({
         justifyContent: "flex-end",
         gap: Spacing.two,
     },
-    endButton: {
+    previewButton: {
         minHeight: 38,
         width: "100%",
         alignItems: "center",
         justifyContent: "center",
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: "rgba(180, 35, 24, 0.34)",
-        backgroundColor: "rgba(180, 35, 24, 0.08)",
+        borderColor: "rgba(22, 128, 60, 0.32)",
+        backgroundColor: "rgba(22, 128, 60, 0.1)",
         paddingHorizontal: Spacing.two,
     },
-    endButtonText: {
-        color: "#b42318",
+    previewButtonText: {
+        color: "#16803c",
     },
-    inactiveButton: {
+    inactivePreviewButton: {
         borderColor: "rgba(130, 130, 145, 0.28)",
         backgroundColor: "rgba(130, 130, 145, 0.12)",
     },

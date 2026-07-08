@@ -27,6 +27,7 @@ type InquiryRow = {
     title: string;
     userNeed: string;
     contextSummary: string;
+    primaryLanguageContext: string;
     sourceLanguage: string | null;
     targetLanguage: string;
     status: Inquiry["status"];
@@ -130,12 +131,19 @@ type RelationRow = {
     updatedAt: string;
 };
 
+export type KnowledgeEntityReferenceCounts = {
+    knowledgePointCount: number;
+    learningTargetCount: number;
+    relationCount: number;
+};
+
 const inquiryColumns = `
   id,
   session_id AS sessionId,
   title,
   user_need AS userNeed,
   context_summary AS contextSummary,
+  primary_language_context AS primaryLanguageContext,
   source_language AS sourceLanguage,
   target_language AS targetLanguage,
   status,
@@ -266,6 +274,7 @@ function mapInquiry(row: InquiryRow): Inquiry {
         title: row.title,
         userNeed: row.userNeed,
         contextSummary: row.contextSummary,
+        primaryLanguageContext: row.primaryLanguageContext,
         sourceLanguage: row.sourceLanguage ?? undefined,
         targetLanguage: row.targetLanguage,
         status: row.status,
@@ -420,6 +429,7 @@ export class InquiryDao {
             title: inquiry.title,
             userNeed: inquiry.userNeed,
             contextSummary: inquiry.contextSummary,
+            primaryLanguageContext: inquiry.primaryLanguageContext,
             sourceLanguage: inquiry.sourceLanguage ?? null,
             targetLanguage: inquiry.targetLanguage,
             status: inquiry.status,
@@ -431,15 +441,17 @@ export class InquiryDao {
         await this.db.runAsync(
             `
 INSERT INTO inquiries (
-  id, session_id, title, user_need, context_summary, source_language,
-  target_language, status, created_from, created_at, updated_at
+  id, session_id, title, user_need, context_summary, primary_language_context,
+  source_language, target_language, status, created_from, created_at,
+  updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   session_id = excluded.session_id,
   title = excluded.title,
   user_need = excluded.user_need,
   context_summary = excluded.context_summary,
+  primary_language_context = excluded.primary_language_context,
   source_language = excluded.source_language,
   target_language = excluded.target_language,
   status = excluded.status,
@@ -453,6 +465,7 @@ ON CONFLICT(id) DO UPDATE SET
                 values.title,
                 values.userNeed,
                 values.contextSummary,
+                values.primaryLanguageContext,
                 values.sourceLanguage,
                 values.targetLanguage,
                 values.status,
@@ -521,6 +534,20 @@ ORDER BY sequence ASC
 export class KnowledgeEntityDao {
     constructor(private readonly db: SQLiteDatabase) {}
 
+    async listConcepts(limit = 500): Promise<Concept[]> {
+        const rows = await this.db.getAllAsync<ConceptRow>(
+            `
+SELECT ${conceptColumns}
+FROM concepts
+ORDER BY updated_at DESC
+LIMIT ?
+`,
+            [limit]
+        );
+
+        return rows.map(mapConcept);
+    }
+
     async upsertConcept(concept: Concept): Promise<void> {
         const values = {
             id: concept.id,
@@ -579,6 +606,23 @@ WHERE id = ?
         return row ? mapConcept(row) : null;
     }
 
+    async getConceptsByIds(ids: string[]): Promise<Concept[]> {
+        if (ids.length === 0) {
+            return [];
+        }
+
+        const rows = await this.db.getAllAsync<ConceptRow>(
+            `
+SELECT ${conceptColumns}
+FROM concepts
+WHERE id IN (${ids.map(() => "?").join(", ")})
+`,
+            ids
+        );
+
+        return rows.map(mapConcept);
+    }
+
     async findConcepts(labels: string[], limit = 20): Promise<Concept[]> {
         const lookupLabels = labels
             .map((label) => label.trim())
@@ -623,6 +667,20 @@ LIMIT 200
         }
 
         return [...matchedConcepts.values()].slice(0, limit);
+    }
+
+    async listExpressions(limit = 500): Promise<Expression[]> {
+        const rows = await this.db.getAllAsync<ExpressionRow>(
+            `
+SELECT ${expressionColumns}
+FROM expressions
+ORDER BY updated_at DESC
+LIMIT ?
+`,
+            [limit]
+        );
+
+        return rows.map(mapExpression);
     }
 
     async upsertExpression(expression: Expression): Promise<void> {
@@ -729,6 +787,20 @@ LIMIT ?
         return rows.map(mapExpression);
     }
 
+    async listPatterns(limit = 500): Promise<Pattern[]> {
+        const rows = await this.db.getAllAsync<PatternRow>(
+            `
+SELECT ${patternColumns}
+FROM patterns
+ORDER BY updated_at DESC
+LIMIT ?
+`,
+            [limit]
+        );
+
+        return rows.map(mapPattern);
+    }
+
     async upsertPattern(pattern: Pattern): Promise<void> {
         const values = {
             id: pattern.id,
@@ -788,6 +860,70 @@ WHERE id = ?
             [id]
         );
         return row ? mapPattern(row) : null;
+    }
+
+    async countReferences(
+        entityType: KnowledgePointEntity["entityType"],
+        entityId: string
+    ): Promise<KnowledgeEntityReferenceCounts> {
+        const knowledgePointRow = await this.db.getFirstAsync<{
+            count: number;
+        }>(
+            `
+SELECT COUNT(DISTINCT knowledge_point_id) AS count
+FROM knowledge_point_entities
+WHERE entity_type = ?
+  AND entity_id = ?
+`,
+            [entityType, entityId]
+        );
+        const learningTargetRow = await this.db.getFirstAsync<{
+            count: number;
+        }>(
+            `
+SELECT COUNT(DISTINCT learning_target_id) AS count
+FROM learning_target_entities
+WHERE entity_type = ?
+  AND entity_id = ?
+`,
+            [entityType, entityId]
+        );
+        const relationRow = await this.db.getFirstAsync<{ count: number }>(
+            `
+SELECT COUNT(*) AS count
+FROM relations
+WHERE (from_type = ? AND from_id = ?)
+   OR (to_type = ? AND to_id = ?)
+`,
+            [entityType, entityId, entityType, entityId]
+        );
+
+        return {
+            knowledgePointCount: Number(knowledgePointRow?.count ?? 0),
+            learningTargetCount: Number(learningTargetRow?.count ?? 0),
+            relationCount: Number(relationRow?.count ?? 0),
+        };
+    }
+
+    async deleteEntity(
+        entityType: KnowledgePointEntity["entityType"],
+        entityId: string
+    ): Promise<void> {
+        if (entityType === "concept") {
+            await this.db.runAsync("DELETE FROM concepts WHERE id = ?", [
+                entityId,
+            ]);
+            return;
+        }
+
+        if (entityType === "expression") {
+            await this.db.runAsync("DELETE FROM expressions WHERE id = ?", [
+                entityId,
+            ]);
+            return;
+        }
+
+        await this.db.runAsync("DELETE FROM patterns WHERE id = ?", [entityId]);
     }
 }
 
@@ -942,6 +1078,12 @@ ORDER BY entity_type ASC, role ASC
 
         return rows.map(mapKnowledgePointEntity);
     }
+
+    async deleteById(knowledgePointId: string): Promise<void> {
+        await this.db.runAsync("DELETE FROM knowledge_points WHERE id = ?", [
+            knowledgePointId,
+        ]);
+    }
 }
 
 export class RelationDao {
@@ -1018,5 +1160,19 @@ ORDER BY updated_at DESC
         );
 
         return rows.map(mapRelation);
+    }
+
+    async deleteForEntity(
+        entityType: RelationEntityType,
+        entityId: string
+    ): Promise<void> {
+        await this.db.runAsync(
+            `
+DELETE FROM relations
+WHERE (from_type = ? AND from_id = ?)
+   OR (to_type = ? AND to_id = ?)
+`,
+            [entityType, entityId, entityType, entityId]
+        );
     }
 }

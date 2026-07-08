@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 
 type Migration = {
     version: number;
@@ -320,6 +320,13 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value_json TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+`,
+    },
+    {
+        version: 5,
+        sql: `
+ALTER TABLE inquiries
+ADD COLUMN primary_language_context TEXT NOT NULL DEFAULT '';
 `,
     },
 ];

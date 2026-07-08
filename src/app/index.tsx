@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -10,13 +11,26 @@ import { MaxContentWidth, Spacing, TopTabInset } from "@/constants/theme";
 import { useIndexChatSession } from "@/hooks/use-index-chat-session";
 
 const CURRENT_USER_ID = "mock-user";
+const MIN_COMPOSER_HEIGHT = 64;
 
 export default function ChatScreen() {
     const insets = useSafeAreaInsets();
+    const [composerHeight, setComposerHeight] = useState(MIN_COMPOSER_HEIGHT);
     const chat = useIndexChatSession({ userId: CURRENT_USER_ID });
     const hasSession = Boolean(chat.session);
     const composerVisible =
         chat.status.session === "loading" || chat.status.session === "active";
+    const previewBottomGap = composerVisible
+        ? Math.max(composerHeight, MIN_COMPOSER_HEIGHT) + Spacing.two
+        : 0;
+
+    const handleComposerHeightChange = useCallback((height: number) => {
+        const nextHeight = Math.ceil(height);
+
+        setComposerHeight((currentHeight) =>
+            currentHeight === nextHeight ? currentHeight : nextHeight
+        );
+    }, []);
 
     return (
         <ThemedView style={styles.screen}>
@@ -40,12 +54,16 @@ export default function ChatScreen() {
                         operationStatus={chat.status.operation}
                         sessionLabel={chat.labels.session}
                         workflowLabel={chat.labels.workflow}
-                        endSessionActionStatus={chat.status.endSessionAction}
+                        generateExtractionPreviewActionStatus={
+                            chat.status.generateExtractionPreviewAction
+                        }
                         createSessionActionStatus={
                             chat.status.createSessionAction
                         }
                         onCreateSession={chat.actions.createSession}
-                        onEndSession={chat.actions.endSession}
+                        onGenerateExtractionPreview={
+                            chat.actions.generateExtractionPreview
+                        }
                         onOpenHistory={chat.actions.openHistory}
                     />
 
@@ -61,14 +79,19 @@ export default function ChatScreen() {
                     />
 
                     {chat.extractionPreview ? (
-                        <ExtractionPreviewPanel
-                            preview={chat.extractionPreview}
-                            isCommitting={
-                                chat.status.operation === "committing"
-                            }
-                            onCancel={chat.actions.cancelExtraction}
-                            onConfirm={chat.actions.confirmExtraction}
-                        />
+                        <View style={{ marginBottom: previewBottomGap }}>
+                            <ExtractionPreviewPanel
+                                preview={chat.extractionPreview}
+                                isConfirming={
+                                    chat.status.operation ===
+                                    "confirming_preview"
+                                }
+                                onCancel={chat.actions.cancelExtractionPreview}
+                                onConfirm={
+                                    chat.actions.confirmExtractionPreview
+                                }
+                            />
+                        </View>
                     ) : null}
 
                     <ChatComposer
@@ -78,6 +101,7 @@ export default function ChatScreen() {
                         composerActionStatus={chat.status.composerAction}
                         sendActionStatus={chat.status.sendAction}
                         onChangeInput={chat.actions.setInput}
+                        onHeightChange={handleComposerHeightChange}
                         onSend={chat.actions.send}
                     />
                 </View>

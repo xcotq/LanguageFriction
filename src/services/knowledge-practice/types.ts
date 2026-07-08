@@ -1,4 +1,5 @@
 import type {
+    Concept,
     Expression,
     Inquiry,
     KnowledgePoint,
@@ -11,11 +12,17 @@ export type KnowledgePointExpressionSource = {
     link: KnowledgePointEntity;
 };
 
+export type KnowledgePointConceptSource = {
+    concept: Concept;
+    link: KnowledgePointEntity;
+};
+
 export type KnowledgePointPracticeSource = {
     knowledgePoint: KnowledgePoint;
     inquiry: Inquiry;
     utterance?: KnowledgePointUtterance;
     utterances: KnowledgePointUtterance[];
+    concepts: KnowledgePointConceptSource[];
     expressions: KnowledgePointExpressionSource[];
 };
 

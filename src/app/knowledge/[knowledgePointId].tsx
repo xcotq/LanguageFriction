@@ -8,6 +8,7 @@ import { KnowledgeActionButton } from "@/components/knowledge/knowledge-action-b
 import { KnowledgeDetailSection } from "@/components/knowledge/knowledge-detail-section";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { showAlert, showConfirm } from "@/components/ui/platform-alert";
 import { MaxContentWidth, Spacing, TopTabInset } from "@/constants/theme";
 import { useRepositories } from "@/data/repositories";
 import {
@@ -19,7 +20,7 @@ import { usePracticeReminderState } from "@/providers/practice-reminder-state";
 
 const CURRENT_USER_ID = "mock-user";
 
-type ActionState = "idle" | "targets" | "practice";
+type ActionState = "idle" | "targets" | "practice" | "delete";
 
 function formatCount(count: number, noun: string) {
     return `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -35,6 +36,28 @@ function formatContext(context: Record<string, unknown>) {
     return JSON.stringify(context, null, 2);
 }
 
+function formatConceptNote(
+    concept: KnowledgePointPracticeSource["concepts"][0]["concept"]
+) {
+    if (concept.definition) {
+        return concept.definition;
+    }
+
+    if (concept.disambiguationNote) {
+        return concept.disambiguationNote;
+    }
+
+    if (concept.aliases && concept.aliases.length > 0) {
+        return `Aliases: ${concept.aliases.join(", ")}`;
+    }
+
+    if (concept.domain && concept.domain.length > 0) {
+        return `Domain: ${concept.domain.join(", ")}`;
+    }
+
+    return concept.languageHint ?? "No concept note.";
+}
+
 export default function KnowledgePointDetailScreen() {
     const router = useRouter();
     const theme = useTheme();
@@ -46,8 +69,10 @@ export default function KnowledgePointDetailScreen() {
             ? params.knowledgePointId
             : undefined;
     const {
+        knowledge,
         knowledgePracticeSource,
         learningTargetGeneration,
+        practice,
         practiceItemGeneration,
     } = useRepositories();
     const [source, setSource] = useState<KnowledgePointPracticeSource | null>(
@@ -178,10 +203,25 @@ export default function KnowledgePointDetailScreen() {
         setErrorMessage(undefined);
 
         try {
+            const targetRecords =
+                await practice.listLearningTargetsForKnowledgePoint(
+                    CURRENT_USER_ID,
+                    knowledgePointId
+                );
+            const learningTargetIds = targetRecords.map(
+                ({ target }) => target.id
+            );
+
+            if (learningTargetIds.length === 0) {
+                setResultMessage("No targets ready. Generate targets first.");
+                return;
+            }
+
             const drafts =
-                await practiceItemGeneration.generateForKnowledgePoint({
+                await practiceItemGeneration.generateForLearningTargets({
                     userId: CURRENT_USER_ID,
-                    knowledgePointId,
+                    learningTargetIds,
+                    limit: 2,
                 });
 
             setResultMessage(
@@ -194,7 +234,58 @@ export default function KnowledgePointDetailScreen() {
         } finally {
             setActionState("idle");
         }
-    }, [knowledgePointId, loadKnowledgePoint, practiceItemGeneration]);
+    }, [
+        knowledgePointId,
+        loadKnowledgePoint,
+        practice,
+        practiceItemGeneration,
+    ]);
+
+    const handleDeleteKnowledgePoint = useCallback(async () => {
+        if (!knowledgePointId || !source) {
+            return;
+        }
+
+        const confirmed = await showConfirm({
+            title: "Delete knowledge point?",
+            message:
+                "This removes its targets and practice data. Linked entities are deleted only when they are not used by any other knowledge point or learning target.",
+            confirmText: "Delete",
+            destructive: true,
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
+        setActionState("delete");
+        setResultMessage(undefined);
+        setErrorMessage(undefined);
+
+        try {
+            const result = await knowledge.deleteKnowledgePointCascade({
+                userId: CURRENT_USER_ID,
+                knowledgePointId,
+            });
+
+            if (!result.deletedKnowledgePoint) {
+                setErrorMessage("Knowledge point could not be found.");
+                return;
+            }
+
+            await refreshDueTargets();
+            router.replace("/knowledge");
+        } catch (error) {
+            console.error("Failed to delete knowledge point", error);
+            setErrorMessage("Knowledge point could not be deleted.");
+            showAlert(
+                "Delete failed",
+                "The knowledge point could not be deleted."
+            );
+        } finally {
+            setActionState("idle");
+        }
+    }, [knowledge, knowledgePointId, refreshDueTargets, router, source]);
 
     return (
         <ScrollView
@@ -272,6 +363,13 @@ export default function KnowledgePointDetailScreen() {
                             <ThemedText selectable type="small">
                                 {source.inquiry.userNeed}
                             </ThemedText>
+                            <ThemedText
+                                selectable
+                                type="small"
+                                themeColor="textSecondary"
+                            >
+                                {source.inquiry.primaryLanguageContext}
+                            </ThemedText>
                         </KnowledgeDetailSection>
 
                         <KnowledgeDetailSection title="Objective">
@@ -319,6 +417,60 @@ export default function KnowledgePointDetailScreen() {
                                     themeColor="textSecondary"
                                 >
                                     No recommended utterance.
+                                </ThemedText>
+                            )}
+                        </KnowledgeDetailSection>
+
+                        <KnowledgeDetailSection title="Concepts">
+                            {source.concepts.length > 0 ? (
+                                <View style={styles.expressionList}>
+                                    {source.concepts.map(
+                                        ({ concept, link }) => (
+                                            <ThemedView
+                                                key={`${concept.id}:${link.role}`}
+                                                type="backgroundElement"
+                                                style={styles.expressionRow}
+                                            >
+                                                <View
+                                                    style={
+                                                        styles.expressionText
+                                                    }
+                                                >
+                                                    <ThemedText
+                                                        selectable
+                                                        type="smallBold"
+                                                    >
+                                                        {concept.canonicalLabel}
+                                                    </ThemedText>
+                                                    <ThemedText
+                                                        selectable
+                                                        type="small"
+                                                        themeColor="textSecondary"
+                                                    >
+                                                        {formatConceptNote(
+                                                            concept
+                                                        )}
+                                                    </ThemedText>
+                                                </View>
+                                                <ThemedText
+                                                    selectable
+                                                    type="code"
+                                                    themeColor="textSecondary"
+                                                    style={styles.roleText}
+                                                >
+                                                    {link.role}
+                                                </ThemedText>
+                                            </ThemedView>
+                                        )
+                                    )}
+                                </View>
+                            ) : (
+                                <ThemedText
+                                    selectable
+                                    type="small"
+                                    themeColor="textSecondary"
+                                >
+                                    No concepts linked.
                                 </ThemedText>
                             )}
                         </KnowledgeDetailSection>
@@ -391,6 +543,13 @@ export default function KnowledgePointDetailScreen() {
                                     disabled={actionState !== "idle"}
                                     onPress={handleGeneratePractice}
                                     variant="secondary"
+                                />
+                                <KnowledgeActionButton
+                                    label="Delete knowledge point"
+                                    loading={actionState === "delete"}
+                                    disabled={actionState !== "idle"}
+                                    onPress={handleDeleteKnowledgePoint}
+                                    variant="danger"
                                 />
                             </View>
 

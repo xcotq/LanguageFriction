@@ -86,17 +86,22 @@ export function getSendActionStatus({
     );
 }
 
-export function getEndSessionActionStatus({
+export function getGenerateExtractionPreviewActionStatus({
     sessionStatus,
     isSending,
     operationStatus,
+    previewStatus,
 }: {
     sessionStatus: ChatSessionScreenStatus;
     isSending: boolean;
     operationStatus: ChatOperationStatus;
+    previewStatus: ChatPreviewStatus;
 }): ChatActionStatus {
     return getActionStatus(
-        sessionStatus === "active" && !isSending && operationStatus === "idle"
+        sessionStatus === "active" &&
+            !isSending &&
+            operationStatus === "idle" &&
+            previewStatus !== "pending"
     );
 }
 
@@ -119,12 +124,12 @@ export function getWorkflowStatus({
     sessionStatus: ChatSessionScreenStatus;
     isModelStatusLoading: boolean;
 }): ChatWorkflowStatus {
-    if (operationStatus === "extracting") {
-        return "extracting";
+    if (operationStatus === "generating_preview") {
+        return "generating_preview";
     }
 
-    if (operationStatus === "committing") {
-        return "committing";
+    if (operationStatus === "confirming_preview") {
+        return "confirming_preview";
     }
 
     if (previewStatus === "pending") {
@@ -159,12 +164,12 @@ export function getWorkflowLabel({
     previewCount: number;
     modelLabel: string;
 }) {
-    if (workflowStatus === "extracting") {
-        return "Extracting knowledge...";
+    if (workflowStatus === "generating_preview") {
+        return "Generating preview...";
     }
 
-    if (workflowStatus === "committing") {
-        return "Saving knowledge...";
+    if (workflowStatus === "confirming_preview") {
+        return "Confirming preview...";
     }
 
     if (workflowStatus === "preview_pending") {

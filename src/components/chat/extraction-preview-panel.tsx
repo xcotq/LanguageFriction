@@ -23,16 +23,16 @@ function previewCountLabel(count: number) {
 
 export function ExtractionPreviewPanel({
     preview,
-    isCommitting,
+    isConfirming,
     onCancel,
     onConfirm,
 }: {
     preview: SessionExtractionPreview;
-    isCommitting: boolean;
+    isConfirming: boolean;
     onCancel: () => void;
     onConfirm: () => void;
 }) {
-    const canConfirm = preview.inquiryPreviews.length > 0 && !isCommitting;
+    const canConfirm = preview.inquiryPreviews.length > 0 && !isConfirming;
 
     return (
         <ThemedView type="backgroundElement" style={styles.panel}>
@@ -65,6 +65,9 @@ export function ExtractionPreviewPanel({
                                 themeColor="textSecondary"
                             >
                                 {item.inquiry.userNeed}
+                            </ThemedText>
+                            <ThemedText selectable type="small">
+                                {item.inquiry.primaryLanguageContext}
                             </ThemedText>
                             <ThemedText selectable type="small">
                                 {item.knowledgePoint.objective}
@@ -112,11 +115,11 @@ export function ExtractionPreviewPanel({
                     accessibilityRole="button"
                     accessibilityLabel="Cancel knowledge preview"
                     onPress={onCancel}
-                    disabled={isCommitting}
+                    disabled={isConfirming}
                     style={({ pressed }) => [
                         styles.secondaryButton,
                         pressed && styles.pressed,
-                        isCommitting && styles.disabled,
+                        isConfirming && styles.disabled,
                     ]}
                 >
                     <ThemedText
@@ -142,7 +145,7 @@ export function ExtractionPreviewPanel({
                         type="smallBold"
                         style={styles.primaryButtonText}
                     >
-                        {isCommitting ? "Saving..." : "Confirm"}
+                        {isConfirming ? "Confirming..." : "Confirm"}
                     </ThemedText>
                 </Pressable>
             </View>

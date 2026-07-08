@@ -131,6 +131,7 @@ Inquiry {
   title: string
   userNeed: string
   contextSummary: string
+  primaryLanguageContext: string
   sourceLanguage?: string
   targetLanguage: string
   status: "draft" | "extracted" | "archived"
@@ -139,6 +140,8 @@ Inquiry {
   updatedAt: Date
 }
 ```
+
+`primaryLanguageContext` stores background information, source wording, or examples in the learner's primary language. For example, when a Chinese speaker asks how to express something in English, this field should preserve a Chinese explanation or example so later extraction, knowledge drafting, and practice generation can understand the original intent.
 
 ### InquiryMessage
 
@@ -316,6 +319,8 @@ An Utterance is a complete sentence or complete wording used in a specific conte
 
 In the initial model, Utterance is not a global reusable entity. It is stored under KnowledgePoint.
 
+During Inquiry-to-Knowledge extraction, Utterances should be target-language results only. Source-language or learner-primary-language explanations belong in Inquiry context, KnowledgePoint explanation, Concept labels, or notes instead. `incorrect` and `literal_translation` utterances should still be attempted target-language wordings.
+
 This still allows LearningTarget to train an Utterance by referencing this record.
 
 Suggested fields:
@@ -404,6 +409,14 @@ Initial relation guidance:
 - KnowledgePoint to KnowledgePoint: use only for personal learning relations such as `follow_up`, `refines`, or `similar_learning_case`.
 - Do not create global Concept relations just because the assistant mentioned a supporting concept. Prefer user-triggered or review-useful relations.
 
+### Knowledge Deletion Semantics
+
+Deleting a KnowledgePoint removes that user-specific learning result, its local Utterances, its LearningTargets, and PracticeItems that become unanchored after those targets are removed.
+
+Concept, Expression, and Pattern records linked to the deleted KnowledgePoint should be deleted only when they no longer have any KnowledgePointEntity or LearningTargetEntity anchors. Entities still used by another KnowledgePoint or LearningTarget are treated as independent reusable entities and must be retained.
+
+Deleting a Knowledge Entity from the entity browser removes its KnowledgePointEntity links and Relations. LearningTargets that no longer have any LearningTargetEntity anchors after that removal should also be deleted, along with PracticeItems that become unanchored.
+
 ## 5. Learning Entities
 
 ### LearningTarget
@@ -484,6 +497,14 @@ PracticeItem is one concrete generated exercise.
 
 It is an instance of practice, not the long-term mastery state.
 
+PracticeItem content is materialized when the LearningTarget is turned into a review item. The materialization flow is:
+
+```text
+MaterializeTarget -> LLM practice content generation -> PracticeItem.prompt, expectedAnswer, acceptableAnswers
+```
+
+`type` is retained for compatibility and future display variants, but generated practice items currently use `free_response` uniformly. The practice intent is derived from the LearningTarget ability and materialization context; it should not be regenerated as learner-facing prompt metadata.
+
 Suggested fields:
 
 ```ts
@@ -504,6 +525,10 @@ PracticeItem {
   expiresAt?: Date
 }
 ```
+
+`prompt` stores the complete learner-facing display payload for the exercise, not only a text question or a pointer to source context. The current generated shape should stay simple, with a short title and one Markdown prompt body that includes every visible instruction, scenario, constraint, and hint needed to render the item later.
+
+`expectedAnswer` and `acceptableAnswers` are generated and persisted at the same time as `prompt`. They should reflect the specific materialized exercise, not be regenerated at answer time.
 
 `contextSnapshot` stores the practice-time scenario and constraints needed to evaluate the answer, such as domain, speaker/listener roles, target language, region, register, source KnowledgePoint context, or any generated prompt variables. It should be a snapshot, not a live pointer to mutable context.
 
@@ -581,6 +606,7 @@ AppSetting {
 Initial setting keys:
 
 - `practiceReminder`: controls whether the app polls local due LearningTargets and shows a top reminder. This should not be stored in SecureStore because it is not secret data.
+- `languagePreferences`: stores the learner's primary language and learning language. Initial supported language codes are `en`, `zh`, `de`, `ja`, and `fr`. This should not be stored in SecureStore because it is not secret data.
 
 ## 7. Runtime Search and Entity Resolution
 
@@ -657,6 +683,7 @@ Inquiry {
   title: "Ask for extra bacon bits on a baked potato"
   userNeed: "在餐厅自然地请求给烤土豆额外加培根碎"
   contextSummary: "User is ordering food in a restaurant, likely asking a server."
+  primaryLanguageContext: "用户想在餐厅点烤土豆时，请服务员额外加培根碎。"
   sourceLanguage: "zh-CN"
   targetLanguage: "en"
 }

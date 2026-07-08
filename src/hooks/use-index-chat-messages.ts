@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { LanguagePreferenceSettings } from "@/constants/language-preferences";
 import { createTextChatMessage } from "@/hooks/use-chat-session";
 import type {
     ChatOperationStatus,
@@ -25,6 +26,7 @@ type UseIndexChatMessagesOptions = {
     operationStatus: ChatOperationStatus;
     previewStatus: ChatPreviewStatus;
     isModelStatusLoading: boolean;
+    languagePreferences: LanguagePreferenceSettings;
     modelStatus: LanguageModelStatus;
     appendMessage: (message: ChatMessage) => Promise<void>;
 };
@@ -38,6 +40,7 @@ export function useIndexChatMessages({
     operationStatus,
     previewStatus,
     isModelStatusLoading,
+    languagePreferences,
     modelStatus,
     appendMessage,
 }: UseIndexChatMessagesOptions) {
@@ -107,7 +110,11 @@ export function useIndexChatMessages({
             await appendMessage(userMessage);
 
             const assistantText = modelStatus.configured
-                ? await sendLanguageFrictionMessage(messages, text)
+                ? await sendLanguageFrictionMessage(
+                      messages,
+                      text,
+                      languagePreferences
+                  )
                 : createMockReply(text);
             const assistantMessage = createTextChatMessage({
                 sessionId: session.id,
@@ -139,6 +146,7 @@ export function useIndexChatMessages({
         input,
         isSending,
         isSessionLoading,
+        languagePreferences,
         messages,
         modelStatus.configured,
         sendActionStatus,

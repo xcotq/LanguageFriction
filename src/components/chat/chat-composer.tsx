@@ -13,6 +13,7 @@ export function ChatComposer({
     sendActionStatus,
     visible,
     onChangeInput,
+    onHeightChange,
     onSend,
 }: {
     bottomInset: number;
@@ -21,6 +22,7 @@ export function ChatComposer({
     sendActionStatus: ChatActionStatus;
     visible: boolean;
     onChangeInput: (text: string) => void;
+    onHeightChange?: (height: number) => void;
     onSend: () => void;
 }) {
     const theme = useTheme();
@@ -36,6 +38,9 @@ export function ChatComposer({
         <ThemedView
             type="backgroundElement"
             style={[styles.composer, { bottom: bottomInset }]}
+            onLayout={(event) =>
+                onHeightChange?.(event.nativeEvent.layout.height)
+            }
         >
             <TextInput
                 value={input}

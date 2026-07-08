@@ -4,6 +4,7 @@ import { runWriteTransaction } from "@/data/database/transaction";
 import {
     LearningTargetDao,
     PracticeDao,
+    type LearningTargetSummaryRecord,
     type PracticeItemSummaryRecord,
 } from "@/data/dao/learning.dao";
 import type {
@@ -27,6 +28,10 @@ export type LearningTargetDraft = {
 
 export type LearningTargetWithEntities = {
     target: LearningTarget;
+    entities: LearningTargetEntity[];
+};
+
+export type LearningTargetSummary = LearningTargetSummaryRecord & {
     entities: LearningTargetEntity[];
 };
 
@@ -55,6 +60,11 @@ export type PracticeItemResponseDetail = {
 export type PracticeItemDetail = PracticeItemSummary & {
     targets: PracticeItemTargetDetail[];
     responses: PracticeItemResponseDetail[];
+};
+
+export type DeleteLearningTargetResult = {
+    deletedLearningTarget: boolean;
+    deletedPracticeItemCount: number;
 };
 
 function formatResponseTimestamp(date: Date) {
@@ -118,6 +128,33 @@ export class PracticeRepository {
         return new LearningTargetDao(this.db).listDue(userId, now, limit);
     }
 
+    async listLearningTargetSummaries(
+        userId: string,
+        limit = 500
+    ): Promise<LearningTargetSummary[]> {
+        const targetDao = new LearningTargetDao(this.db);
+        const summaries = await targetDao.listByUser(userId, limit);
+        const entities = await targetDao.listEntitiesForTargets(
+            summaries.map(({ target }) => target.id)
+        );
+        const entitiesByTargetId = new Map<string, LearningTargetEntity[]>();
+
+        for (const entity of entities) {
+            const existing = entitiesByTargetId.get(entity.learningTargetId);
+
+            if (existing) {
+                existing.push(entity);
+            } else {
+                entitiesByTargetId.set(entity.learningTargetId, [entity]);
+            }
+        }
+
+        return summaries.map((summary) => ({
+            ...summary,
+            entities: entitiesByTargetId.get(summary.target.id) ?? [],
+        }));
+    }
+
     async getLearningTargetWithEntities(
         learningTargetId: string,
         userId?: string
@@ -151,6 +188,41 @@ export class PracticeRepository {
                 entities: await targetDao.listEntities(target.id),
             }))
         );
+    }
+
+    async deleteLearningTarget(input: {
+        userId: string;
+        learningTargetId: string;
+    }): Promise<DeleteLearningTargetResult> {
+        return runWriteTransaction(this.db, async (tx) => {
+            const targetDao = new LearningTargetDao(tx);
+            const practiceDao = new PracticeDao(tx);
+            const target = await targetDao.getById(input.learningTargetId);
+
+            if (!target || target.userId !== input.userId) {
+                return {
+                    deletedLearningTarget: false,
+                    deletedPracticeItemCount: 0,
+                };
+            }
+
+            const practiceItemIds =
+                await practiceDao.listPracticeItemIdsForLearningTargets([
+                    input.learningTargetId,
+                ]);
+
+            await targetDao.deleteById(input.learningTargetId);
+
+            const deletedPracticeItemCount =
+                await practiceDao.deletePracticeItemsWithoutTargets(
+                    practiceItemIds
+                );
+
+            return {
+                deletedLearningTarget: true,
+                deletedPracticeItemCount,
+            };
+        });
     }
 
     async savePracticeItem(draft: PracticeItemDraft): Promise<void> {

@@ -15,6 +15,7 @@ import type {
 } from "@/types/domain";
 
 import type {
+    KnowledgePointConceptSource,
     KnowledgePointExpressionSource,
     KnowledgePointPracticeSource,
     KnowledgePointSummary,
@@ -33,6 +34,10 @@ function selectPreferredUtterance(utterances: KnowledgePointUtterance[]) {
 
 function isExpressionLink(link: KnowledgePointEntity) {
     return link.entityType === "expression";
+}
+
+function isConceptLink(link: KnowledgePointEntity) {
+    return link.entityType === "concept";
 }
 
 export class KnowledgePracticeSourceService {
@@ -140,9 +145,18 @@ export class KnowledgePracticeSourceService {
             this.knowledgePointDao.listUtterances(knowledgePoint.id),
             this.knowledgePointDao.listEntities(knowledgePoint.id),
         ]);
+        const conceptLinks = links.filter(isConceptLink);
         const expressionLinks = links.filter(isExpressionLink);
-        const expressions = await this.entityDao.getExpressionsByIds(
-            expressionLinks.map((link) => link.entityId)
+        const [concepts, expressions] = await Promise.all([
+            this.entityDao.getConceptsByIds(
+                conceptLinks.map((link) => link.entityId)
+            ),
+            this.entityDao.getExpressionsByIds(
+                expressionLinks.map((link) => link.entityId)
+            ),
+        ]);
+        const conceptsById = new Map(
+            concepts.map((concept) => [concept.id, concept])
         );
         const expressionsById = new Map(
             expressions.map((expression) => [expression.id, expression])
@@ -153,6 +167,13 @@ export class KnowledgePracticeSourceService {
             inquiry,
             utterance: selectPreferredUtterance(utterances),
             utterances,
+            concepts: conceptLinks.flatMap<KnowledgePointConceptSource>(
+                (link) => {
+                    const concept = conceptsById.get(link.entityId);
+
+                    return concept ? [{ concept, link }] : [];
+                }
+            ),
             expressions:
                 expressionLinks.flatMap<KnowledgePointExpressionSource>(
                     (link) => {

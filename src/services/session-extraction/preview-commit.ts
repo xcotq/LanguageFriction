@@ -203,6 +203,8 @@ export function approveSessionExtractionPreview(
                     title: inquiryPreview.inquiry.title,
                     userNeed: inquiryPreview.inquiry.userNeed,
                     contextSummary: inquiryPreview.inquiry.contextSummary,
+                    primaryLanguageContext:
+                        inquiryPreview.inquiry.primaryLanguageContext,
                     sourceLanguage: inquiryPreview.inquiry.sourceLanguage,
                     targetLanguage: inquiryPreview.inquiry.targetLanguage,
                     status: "extracted",

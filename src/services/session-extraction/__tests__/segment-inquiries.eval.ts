@@ -24,8 +24,8 @@ type EvaluatedInquirySummary = {
     tempId: string;
     title: string;
     userNeed: string;
+    primaryLanguageContext: string;
     messageIds: string[];
-    confidence: number;
 };
 
 export type SegmentInquiryCaseResult = {
@@ -216,6 +216,7 @@ function inquiryText(inquiry: InquirySlice) {
             inquiry.title,
             inquiry.userNeed,
             inquiry.contextSummary,
+            inquiry.primaryLanguageContext,
             inquiry.reason,
         ].join(" ")
     );
@@ -332,8 +333,8 @@ export async function evaluateSegmentInquiryCase(
             tempId: inquiry.tempId,
             title: inquiry.title,
             userNeed: inquiry.userNeed,
+            primaryLanguageContext: inquiry.primaryLanguageContext,
             messageIds: inquiry.messageLinks.map((link) => link.messageId),
-            confidence: inquiry.confidence,
         })),
         expectedInquiries: testCase.expected.inquiries,
         error,

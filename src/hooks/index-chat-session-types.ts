@@ -4,15 +4,15 @@ import type { ChatMessage, ChatSession, SessionStatus } from "@/types/domain";
 export type ChatActionStatus = "enabled" | "disabled";
 
 export type ChatOperationStatus =
-    "idle" | "creating" | "extracting" | "committing";
+    "idle" | "creating" | "generating_preview" | "confirming_preview";
 
 export type ChatPreviewStatus = "idle" | "pending" | "empty" | "saved";
 
 export type ChatSessionScreenStatus = "loading" | "empty" | SessionStatus;
 
 export type ChatWorkflowStatus =
-    | "extracting"
-    | "committing"
+    | "generating_preview"
+    | "confirming_preview"
     | "preview_pending"
     | "preview_empty"
     | "knowledge_saved"
@@ -41,16 +41,16 @@ export type IndexChatSessionState = {
         workflow: ChatWorkflowStatus;
         composerAction: ChatActionStatus;
         sendAction: ChatActionStatus;
-        endSessionAction: ChatActionStatus;
+        generateExtractionPreviewAction: ChatActionStatus;
         createSessionAction: ChatActionStatus;
     };
     actions: {
         setInput: (text: string) => void;
         send: () => Promise<boolean>;
         createSession: () => Promise<void>;
-        endSession: () => Promise<void>;
-        confirmExtraction: () => Promise<void>;
-        cancelExtraction: () => void;
+        generateExtractionPreview: () => Promise<void>;
+        confirmExtractionPreview: () => Promise<void>;
+        cancelExtractionPreview: () => void;
         openHistory: () => void;
     };
 };

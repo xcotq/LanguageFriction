@@ -113,6 +113,7 @@ export const inquiries = sqliteTable(
         title: text("title").notNull(),
         userNeed: text("user_need").notNull(),
         contextSummary: text("context_summary").notNull(),
+        primaryLanguageContext: text("primary_language_context").notNull(),
         sourceLanguage: text("source_language"),
         targetLanguage: text("target_language").notNull(),
         status: text("status").notNull().$type<InquiryStatus>(),

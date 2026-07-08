@@ -35,6 +35,7 @@ export type InquirySlice = {
     title: string;
     userNeed: string;
     contextSummary: string;
+    primaryLanguageContext: string;
     sourceLanguage?: string;
     targetLanguage: string;
     messageLinks: {
@@ -42,7 +43,6 @@ export type InquirySlice = {
         role: InquiryMessageRole;
         sequence?: number;
     }[];
-    confidence: number;
     reason: string;
 };
 
@@ -143,7 +143,7 @@ export type EntityResolutionPreview =
 
 export type InquiryExtractionPreview = {
     tempId: string;
-    inquiry: Omit<InquirySlice, "tempId" | "confidence" | "reason">;
+    inquiry: Omit<InquirySlice, "tempId" | "reason">;
     knowledgePoint: InquiryKnowledgeDraft["knowledgePoint"];
     utterances: InquiryKnowledgeDraft["utterances"];
     entities: EntityResolutionPreview[];

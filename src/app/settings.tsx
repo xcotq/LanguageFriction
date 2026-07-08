@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { LanguagePreferenceSettingsPanel } from "@/components/settings/language-preference-settings-panel";
 import { LanguageModelSettingsPanel } from "@/components/settings/language-model-settings-panel";
 import { PracticeReminderSettingsPanel } from "@/components/settings/practice-reminder-settings-panel";
 import { ThemedText } from "@/components/themed-text";
@@ -58,10 +59,11 @@ export default function SettingsScreen() {
                             type="small"
                             themeColor="textSecondary"
                         >
-                            Model provider and reminders
+                            Languages, model provider, and reminders
                         </ThemedText>
                     </View>
 
+                    <LanguagePreferenceSettingsPanel />
                     <LanguageModelSettingsPanel
                         onFieldFocus={handleSettingsFieldFocus}
                     />

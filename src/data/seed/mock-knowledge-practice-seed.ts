@@ -25,6 +25,8 @@ const seedInquiryExtractions: InquiryExtractionDraft[] = [
                 "Ask for extra bacon bits on a baked potato in a restaurant.",
             contextSummary:
                 "The user wants a natural US restaurant sentence for requesting an extra topping.",
+            primaryLanguageContext:
+                "\u7528\u6237\u60f3\u5728\u9910\u5385\u70b9\u70e4\u571f\u8c46\u65f6\uff0c\u8bf7\u670d\u52a1\u5458\u989d\u5916\u52a0\u57f9\u6839\u788e\u3002",
             sourceLanguage: "zh-CN",
             targetLanguage: "en-US",
             status: "extracted",
@@ -296,6 +298,8 @@ const seedInquiryExtractions: InquiryExtractionDraft[] = [
                 "Distinguish chamfer and fillet when describing a part edge.",
             contextSummary:
                 "The user asked how to separate two engineering geometry terms in English.",
+            primaryLanguageContext:
+                "\u7528\u6237\u9700\u8981\u7528\u82f1\u6587\u533a\u5206\u673a\u68b0\u96f6\u4ef6\u8fb9\u7f18\u7684\u5012\u89d2\u548c\u5706\u89d2\u3002",
             sourceLanguage: "zh-CN",
             targetLanguage: "en-US",
             status: "extracted",
@@ -550,6 +554,8 @@ const seedInquiryExtractions: InquiryExtractionDraft[] = [
             userNeed: "Ask where there is a power outlet nearby.",
             contextSummary:
                 "The user needs a natural way to ask for a nearby electrical outlet.",
+            primaryLanguageContext:
+                "\u7528\u6237\u60f3\u95ee\u9644\u8fd1\u54ea\u91cc\u6709\u63d2\u5ea7\uff0c\u65b9\u4fbf\u7ed9\u8bbe\u5907\u5145\u7535\u3002",
             sourceLanguage: "zh-CN",
             targetLanguage: "en-US",
             status: "extracted",

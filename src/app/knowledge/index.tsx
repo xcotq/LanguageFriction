@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "expo-router";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -14,6 +15,7 @@ import { useTheme } from "@/hooks/use-theme";
 const CURRENT_USER_ID = "mock-user";
 
 export default function KnowledgeScreen() {
+    const router = useRouter();
     const theme = useTheme();
     const insets = useSafeAreaInsets();
     const { knowledgePracticeSource } = useRepositories();
@@ -101,12 +103,19 @@ export default function KnowledgeScreen() {
                         </ThemedText>
                     </View>
 
-                    <KnowledgeActionButton
-                        label="Refresh"
-                        loading={isLoading}
-                        onPress={loadKnowledgePoints}
-                        variant="secondary"
-                    />
+                    <View style={styles.headerActions}>
+                        <KnowledgeActionButton
+                            label="Entities"
+                            onPress={() => router.push("/knowledge/entities")}
+                            variant="secondary"
+                        />
+                        <KnowledgeActionButton
+                            label="Refresh"
+                            loading={isLoading}
+                            onPress={loadKnowledgePoints}
+                            variant="secondary"
+                        />
+                    </View>
                 </View>
 
                 {errorMessage ? (
@@ -162,6 +171,12 @@ const styles = StyleSheet.create({
     headerText: {
         flex: 1,
         gap: Spacing.one,
+    },
+    headerActions: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        justifyContent: "flex-end",
+        gap: Spacing.two,
     },
     list: {
         gap: Spacing.two,

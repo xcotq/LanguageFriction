@@ -14,6 +14,7 @@ import {
     formatPracticePromptSummary,
     formatPracticeValue,
 } from "@/components/practice/practice-format";
+import { PracticePromptDisplay } from "@/components/practice/practice-prompt-display";
 import { PracticeValueBlock } from "@/components/practice/practice-value-block";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -395,10 +396,7 @@ export default function PracticeItemDetailScreen() {
 
                 {detail ? (
                     <>
-                        <PracticeValueBlock
-                            title="Prompt"
-                            value={detail.item.prompt}
-                        />
+                        <PracticePromptDisplay prompt={detail.item.prompt} />
 
                         {!hasResponses ? (
                             <View style={styles.section}>
@@ -493,6 +491,11 @@ export default function PracticeItemDetailScreen() {
                                 ))}
                             </View>
                         </View>
+
+                        <PracticeValueBlock
+                            title="Prompt payload"
+                            value={detail.item.prompt}
+                        />
 
                         <PracticeValueBlock
                             title="Context snapshot"

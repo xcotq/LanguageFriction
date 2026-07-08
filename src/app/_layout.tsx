@@ -7,6 +7,7 @@ import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import AppTabs from "@/components/app-tabs";
 import { LanguageFrictionDatabaseProvider } from "@/data/database";
 import { LanguageModelStateProvider } from "@/providers/language-model-state";
+import { LanguagePreferenceStateProvider } from "@/providers/language-preference-state";
 import { PracticeReminderStateProvider } from "@/providers/practice-reminder-state";
 
 export default function TabLayout() {
@@ -17,10 +18,12 @@ export default function TabLayout() {
         >
             <LanguageFrictionDatabaseProvider>
                 <LanguageModelStateProvider>
-                    <PracticeReminderStateProvider>
-                        <AnimatedSplashOverlay />
-                        <AppTabs />
-                    </PracticeReminderStateProvider>
+                    <LanguagePreferenceStateProvider>
+                        <PracticeReminderStateProvider>
+                            <AnimatedSplashOverlay />
+                            <AppTabs />
+                        </PracticeReminderStateProvider>
+                    </LanguagePreferenceStateProvider>
                 </LanguageModelStateProvider>
             </LanguageFrictionDatabaseProvider>
         </ThemeProvider>

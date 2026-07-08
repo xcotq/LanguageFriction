@@ -8,7 +8,7 @@ type KnowledgeActionButtonProps = {
     onPress: () => void;
     disabled?: boolean;
     loading?: boolean;
-    variant?: "primary" | "secondary";
+    variant?: "primary" | "secondary" | "danger";
 };
 
 export function KnowledgeActionButton({
@@ -19,6 +19,8 @@ export function KnowledgeActionButton({
     variant = "primary",
 }: KnowledgeActionButtonProps) {
     const isDisabled = disabled || loading;
+    const isPrimary = variant === "primary";
+    const isDanger = variant === "danger";
 
     return (
         <Pressable
@@ -28,22 +30,27 @@ export function KnowledgeActionButton({
             style={({ pressed }) => [
                 styles.button,
                 variant === "secondary" && styles.secondaryButton,
+                variant === "danger" && styles.dangerButton,
                 pressed && !isDisabled && styles.pressed,
                 isDisabled && styles.disabled,
             ]}
         >
             {loading ? (
                 <ActivityIndicator
-                    color={variant === "primary" ? "#ffffff" : "#2f6fed"}
+                    color={
+                        isPrimary ? "#ffffff" : isDanger ? "#dc2626" : "#2f6fed"
+                    }
                     size="small"
                 />
             ) : null}
             <ThemedText
                 type="smallBold"
                 style={
-                    variant === "primary"
+                    isPrimary
                         ? styles.primaryText
-                        : styles.secondaryText
+                        : isDanger
+                          ? styles.dangerText
+                          : styles.secondaryText
                 }
             >
                 {label}
@@ -72,6 +79,11 @@ const styles = StyleSheet.create({
         backgroundColor: "transparent",
         boxShadow: "none",
     },
+    dangerButton: {
+        borderColor: "#dc2626",
+        backgroundColor: "transparent",
+        boxShadow: "none",
+    },
     pressed: {
         opacity: 0.72,
     },
@@ -84,6 +96,10 @@ const styles = StyleSheet.create({
     },
     secondaryText: {
         color: "#2f6fed",
+        textAlign: "center",
+    },
+    dangerText: {
+        color: "#dc2626",
         textAlign: "center",
     },
 });

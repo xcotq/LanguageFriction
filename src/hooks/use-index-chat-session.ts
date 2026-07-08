@@ -10,13 +10,14 @@ import type {
 } from "@/hooks/index-chat-session-types";
 import {
     getCreateSessionActionStatus,
-    getEndSessionActionStatus,
+    getGenerateExtractionPreviewActionStatus,
     getRouteSessionId,
     getSessionScreenStatus,
     getWorkflowLabel,
     getWorkflowStatus,
 } from "@/hooks/index-chat-session-utils";
 import { useLanguageModelState } from "@/providers/language-model-state";
+import { useLanguagePreferenceState } from "@/providers/language-preference-state";
 
 export function useIndexChatSession({
     userId,
@@ -40,6 +41,7 @@ export function useIndexChatSession({
     });
     const { isLoading: isModelStatusLoading, status: modelStatus } =
         useLanguageModelState();
+    const { settings: languagePreferences } = useLanguagePreferenceState();
     const sessionStatus = getSessionScreenStatus({
         isLoading,
         session,
@@ -50,14 +52,15 @@ export function useIndexChatSession({
         extractionPreview,
         actions: {
             createSession: createSessionRequest,
-            endSession: endSessionRequest,
-            confirmExtraction,
-            cancelExtraction,
+            generateExtractionPreview: generateExtractionPreviewRequest,
+            confirmExtractionPreview,
+            cancelExtractionPreview,
             openHistory,
         },
     } = useIndexSessionController({
         selectedSessionId,
         session,
+        languagePreferences,
         modelConfigured: modelStatus.configured,
         createStoredSession,
         closeStoredSession,
@@ -79,6 +82,7 @@ export function useIndexChatSession({
         operationStatus,
         previewStatus,
         isModelStatusLoading,
+        languagePreferences,
         modelStatus,
         appendMessage,
     });
@@ -89,11 +93,13 @@ export function useIndexChatSession({
         sessionStatus,
         isModelStatusLoading,
     });
-    const endSessionActionStatus = getEndSessionActionStatus({
-        sessionStatus,
-        isSending,
-        operationStatus,
-    });
+    const generateExtractionPreviewActionStatus =
+        getGenerateExtractionPreviewActionStatus({
+            sessionStatus,
+            isSending,
+            operationStatus,
+            previewStatus,
+        });
     const createSessionActionStatus = getCreateSessionActionStatus({
         operationStatus,
     });
@@ -106,13 +112,16 @@ export function useIndexChatSession({
         await createSessionRequest();
     }, [createSessionActionStatus, createSessionRequest]);
 
-    const endSession = useCallback(async () => {
-        if (endSessionActionStatus !== "enabled") {
+    const generateExtractionPreview = useCallback(async () => {
+        if (generateExtractionPreviewActionStatus !== "enabled") {
             return;
         }
 
-        await endSessionRequest();
-    }, [endSessionActionStatus, endSessionRequest]);
+        await generateExtractionPreviewRequest();
+    }, [
+        generateExtractionPreviewActionStatus,
+        generateExtractionPreviewRequest,
+    ]);
 
     return useMemo<IndexChatSessionState>(
         () => ({
@@ -137,28 +146,29 @@ export function useIndexChatSession({
                 workflow: workflowStatus,
                 composerAction: composerActionStatus,
                 sendAction: sendActionStatus,
-                endSessionAction: endSessionActionStatus,
+                generateExtractionPreviewAction:
+                    generateExtractionPreviewActionStatus,
                 createSessionAction: createSessionActionStatus,
             },
             actions: {
                 setInput,
                 send,
                 createSession,
-                endSession,
-                confirmExtraction,
-                cancelExtraction,
+                generateExtractionPreview,
+                confirmExtractionPreview,
+                cancelExtractionPreview,
                 openHistory,
             },
         }),
         [
-            cancelExtraction,
+            cancelExtractionPreview,
             composerActionStatus,
-            confirmExtraction,
+            confirmExtractionPreview,
             createSession,
             createSessionActionStatus,
-            endSession,
-            endSessionActionStatus,
             extractionPreview,
+            generateExtractionPreview,
+            generateExtractionPreviewActionStatus,
             input,
             isLoading,
             messages,

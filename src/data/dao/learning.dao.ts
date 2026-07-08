@@ -113,12 +113,27 @@ type PracticeItemSummaryRow = PracticeItemDataRow & {
     latest_submitted_at: string | null;
 };
 
+type LearningTargetSummaryRow = LearningTargetRow & {
+    knowledgePointTitle: string | null;
+    knowledgePointObjective: string | null;
+    practice_item_count: number | null;
+    latest_practice_generated_at: string | null;
+};
+
 export type PracticeItemSummaryRecord = {
     item: PracticeItem;
     targetCount: number;
     dueTargetCount: number;
     responseCount: number;
     latestSubmittedAt?: Date;
+};
+
+export type LearningTargetSummaryRecord = {
+    target: LearningTarget;
+    knowledgePointTitle?: string;
+    knowledgePointObjective?: string;
+    practiceItemCount: number;
+    latestPracticeGeneratedAt?: Date;
 };
 
 function mapLearningTarget(row: LearningTargetRow): LearningTarget {
@@ -211,6 +226,20 @@ function mapPracticeItemSummary(
         dueTargetCount: Number(row.due_target_count ?? 0),
         responseCount: Number(row.response_count ?? 0),
         latestSubmittedAt: optionalTextToDate(row.latest_submitted_at),
+    };
+}
+
+function mapLearningTargetSummary(
+    row: LearningTargetSummaryRow
+): LearningTargetSummaryRecord {
+    return {
+        target: mapLearningTarget(row),
+        knowledgePointTitle: row.knowledgePointTitle ?? undefined,
+        knowledgePointObjective: row.knowledgePointObjective ?? undefined,
+        practiceItemCount: Number(row.practice_item_count ?? 0),
+        latestPracticeGeneratedAt: optionalTextToDate(
+            row.latest_practice_generated_at
+        ),
     };
 }
 
@@ -370,6 +399,49 @@ LIMIT ?
         return rows.map(mapLearningTarget);
     }
 
+    async listByUser(
+        userId: string,
+        limit = 500
+    ): Promise<LearningTargetSummaryRecord[]> {
+        const rows = await this.db.getAllAsync<LearningTargetSummaryRow>(
+            `
+SELECT
+  target_rows.*,
+  knowledge_points.title AS knowledgePointTitle,
+  knowledge_points.objective AS knowledgePointObjective,
+  COUNT(DISTINCT practice_item_targets.practice_item_id) AS practice_item_count,
+  MAX(practice_items.generated_at) AS latest_practice_generated_at
+FROM (
+  SELECT ${learningTargetColumns}
+  FROM learning_targets
+  WHERE user_id = ?
+) AS target_rows
+LEFT JOIN knowledge_points
+  ON knowledge_points.id = target_rows.knowledgePointId
+LEFT JOIN practice_item_targets
+  ON practice_item_targets.learning_target_id = target_rows.id
+LEFT JOIN practice_items
+  ON practice_items.id = practice_item_targets.practice_item_id
+GROUP BY target_rows.id
+ORDER BY
+  CASE target_rows.status
+    WHEN 'active' THEN 0
+    WHEN 'paused' THEN 1
+    WHEN 'mastered' THEN 2
+    ELSE 3
+  END ASC,
+  CASE WHEN target_rows.dueAt IS NULL THEN 0 ELSE 1 END ASC,
+  target_rows.dueAt ASC,
+  target_rows.priority DESC,
+  target_rows.updatedAt DESC
+LIMIT ?
+`,
+            [userId, limit]
+        );
+
+        return rows.map(mapLearningTargetSummary);
+    }
+
     async listByKnowledgePoint(
         userId: string,
         knowledgePointId: string
@@ -435,6 +507,16 @@ ORDER BY learning_target_id ASC, entity_type ASC, role ASC
         );
 
         return rows.map(mapLearningTargetEntity);
+    }
+
+    async deleteById(id: string): Promise<void> {
+        await this.db.runAsync(
+            `
+DELETE FROM learning_targets
+WHERE id = ?
+`,
+            [id]
+        );
     }
 }
 
@@ -593,6 +675,65 @@ WHERE practice_item_targets.learning_target_id IN (${placeholders})
             count: row?.count ?? 0,
             latestGeneratedAt: optionalTextToDate(row?.latest_generated_at),
         };
+    }
+
+    async listPracticeItemIdsForLearningTargets(
+        learningTargetIds: string[]
+    ): Promise<string[]> {
+        if (learningTargetIds.length === 0) {
+            return [];
+        }
+
+        const placeholders = learningTargetIds.map(() => "?").join(", ");
+        const rows = await this.db.getAllAsync<{ id: string }>(
+            `
+SELECT DISTINCT practice_item_id AS id
+FROM practice_item_targets
+WHERE learning_target_id IN (${placeholders})
+`,
+            learningTargetIds
+        );
+
+        return rows.map((row) => row.id);
+    }
+
+    async deletePracticeItemsWithoutTargets(
+        practiceItemIds: string[]
+    ): Promise<number> {
+        if (practiceItemIds.length === 0) {
+            return 0;
+        }
+
+        const placeholders = practiceItemIds.map(() => "?").join(", ");
+        const orphanRows = await this.db.getAllAsync<{ id: string }>(
+            `
+SELECT id
+FROM practice_items
+WHERE id IN (${placeholders})
+  AND NOT EXISTS (
+    SELECT 1
+    FROM practice_item_targets
+    WHERE practice_item_targets.practice_item_id = practice_items.id
+  )
+`,
+            practiceItemIds
+        );
+        const orphanIds = orphanRows.map((row) => row.id);
+
+        if (orphanIds.length === 0) {
+            return 0;
+        }
+
+        const orphanPlaceholders = orphanIds.map(() => "?").join(", ");
+        await this.db.runAsync(
+            `
+DELETE FROM practice_items
+WHERE id IN (${orphanPlaceholders})
+`,
+            orphanIds
+        );
+
+        return orphanIds.length;
     }
 
     async insertUserResponse(response: UserResponse): Promise<void> {

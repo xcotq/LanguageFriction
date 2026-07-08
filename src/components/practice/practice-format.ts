@@ -156,8 +156,11 @@ export function formatPracticePromptSummary(prompt: unknown) {
 
         return (
             firstString(prompt, [
+                "title",
+                "instruction",
                 "question",
                 "front",
+                "markdown",
                 "sourceText",
                 "sentence",
                 "sourceNeed",

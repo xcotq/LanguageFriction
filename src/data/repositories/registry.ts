@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from "expo-sqlite";
 
 import { KnowledgePracticeSourceService } from "@/services/knowledge-practice/knowledge-practice-source-service";
 import { LearningTargetGenerationService } from "@/services/knowledge-practice/learning-target-generation-service";
+import { PracticeItemContentGenerationService } from "@/services/knowledge-practice/practice-item-content-generation-service";
 import { PracticeItemGenerationService } from "@/services/knowledge-practice/practice-item-generation-service";
 import { PracticeResponseEvaluationService } from "@/services/knowledge-practice/practice-response-evaluation-service";
 
@@ -17,6 +18,7 @@ export type LanguageFrictionRepositories = {
     practice: PracticeRepository;
     knowledgePracticeSource: KnowledgePracticeSourceService;
     learningTargetGeneration: LearningTargetGenerationService;
+    practiceItemContentGeneration: PracticeItemContentGenerationService;
     practiceItemGeneration: PracticeItemGenerationService;
     practiceResponseEvaluation: PracticeResponseEvaluationService;
 };
@@ -37,9 +39,12 @@ function createLanguageFrictionRepositories(
         sourceService: knowledgePracticeSource,
         practiceRepository: practice,
     });
+    const practiceItemContentGeneration =
+        new PracticeItemContentGenerationService();
     const practiceItemGeneration = new PracticeItemGenerationService({
         sourceService: knowledgePracticeSource,
         practiceRepository: practice,
+        contentGenerationService: practiceItemContentGeneration,
     });
     const practiceResponseEvaluation = new PracticeResponseEvaluationService({
         practiceRepository: practice,
@@ -52,6 +57,7 @@ function createLanguageFrictionRepositories(
         practice,
         knowledgePracticeSource,
         learningTargetGeneration,
+        practiceItemContentGeneration,
         practiceItemGeneration,
         practiceResponseEvaluation,
     });

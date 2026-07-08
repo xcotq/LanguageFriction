@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 
 import { showAlert } from "@/components/ui/platform-alert";
+import type { LanguagePreferenceSettings } from "@/constants/language-preferences";
 import { useRepositories } from "@/data/repositories";
 import type {
     ChatOperationStatus,
@@ -18,6 +19,7 @@ import type { ChatSession } from "@/types/domain";
 type UseIndexSessionControllerOptions = {
     selectedSessionId: string | null;
     session: ChatSession | null;
+    languagePreferences: LanguagePreferenceSettings;
     modelConfigured: boolean;
     createStoredSession: (title?: string) => Promise<ChatSession>;
     closeStoredSession: (sessionId?: string) => Promise<ChatSession | null>;
@@ -26,6 +28,7 @@ type UseIndexSessionControllerOptions = {
 export function useIndexSessionController({
     selectedSessionId,
     session,
+    languagePreferences,
     modelConfigured,
     createStoredSession,
     closeStoredSession,
@@ -91,7 +94,7 @@ export function useIndexSessionController({
         }
     }, [createStoredSession, operationStatus, router]);
 
-    const endSession = useCallback(async () => {
+    const generateExtractionPreview = useCallback(async () => {
         if (
             !session ||
             session.status !== "active" ||
@@ -100,43 +103,42 @@ export function useIndexSessionController({
             return;
         }
 
-        setOperationStatus("extracting");
+        setOperationStatus("generating_preview");
         setExtractionPreview(null);
         setPreviewStatus("idle");
 
         try {
-            const closedSession = await closeStoredSession(session.id);
-
-            if (!closedSession) {
-                throw new Error("Session was not found.");
-            }
-
-            const snapshot = buildTranscriptSnapshot(closedSession);
+            const snapshot = buildTranscriptSnapshot(session);
             const preview = await runSessionExtractionWorkflow({
                 snapshot,
                 knowledgeRepository,
+                languagePreferences,
                 useModel: modelConfigured,
             });
 
-            if (isMountedRef.current) {
-                setExtractionPreview(preview);
-                setPreviewStatus(
-                    preview.inquiryPreviews.length > 0 ? "pending" : "empty"
-                );
-
-                if (preview.inquiryPreviews.length === 0) {
+            if (preview.inquiryPreviews.length === 0) {
+                if (isMountedRef.current) {
+                    setExtractionPreview(preview);
+                    setPreviewStatus("empty");
                     showAlert(
                         "Nothing to save",
                         "No durable language inquiry was extracted from this session."
                     );
                 }
+
+                return;
+            }
+
+            if (isMountedRef.current) {
+                setExtractionPreview(preview);
+                setPreviewStatus("pending");
             }
         } catch (error) {
-            console.error("Failed to end session", error);
+            console.error("Failed to generate extraction preview", error);
             if (isMountedRef.current) {
                 showAlert(
-                    "End failed",
-                    "The session could not be closed or extracted."
+                    "Preview failed",
+                    "The extraction preview could not be generated."
                 );
             }
         } finally {
@@ -145,14 +147,14 @@ export function useIndexSessionController({
             }
         }
     }, [
-        closeStoredSession,
         knowledgeRepository,
+        languagePreferences,
         modelConfigured,
         operationStatus,
         session,
     ]);
 
-    const confirmExtraction = useCallback(async () => {
+    const confirmExtractionPreview = useCallback(async () => {
         if (
             !extractionPreview ||
             extractionPreview.inquiryPreviews.length === 0 ||
@@ -161,12 +163,20 @@ export function useIndexSessionController({
             return;
         }
 
-        setOperationStatus("committing");
+        setOperationStatus("confirming_preview");
 
         try {
             const approvedExtraction =
                 approveSessionExtractionPreview(extractionPreview);
             await knowledgeRepository.saveSessionExtraction(approvedExtraction);
+
+            const closedSession = await closeStoredSession(
+                extractionPreview.sessionId
+            );
+
+            if (!closedSession) {
+                throw new Error("Session was not found.");
+            }
 
             if (isMountedRef.current) {
                 setExtractionPreview(null);
@@ -181,11 +191,11 @@ export function useIndexSessionController({
                 );
             }
         } catch (error) {
-            console.error("Failed to save extraction", error);
+            console.error("Failed to confirm extraction", error);
             if (isMountedRef.current) {
                 showAlert(
-                    "Save failed",
-                    "The approved knowledge preview could not be saved."
+                    "Confirm failed",
+                    "The approved knowledge preview could not be saved or the session could not be closed."
                 );
             }
         } finally {
@@ -193,9 +203,14 @@ export function useIndexSessionController({
                 setOperationStatus("idle");
             }
         }
-    }, [extractionPreview, knowledgeRepository, operationStatus]);
+    }, [
+        closeStoredSession,
+        extractionPreview,
+        knowledgeRepository,
+        operationStatus,
+    ]);
 
-    const cancelExtraction = useCallback(() => {
+    const cancelExtractionPreview = useCallback(() => {
         setExtractionPreview(null);
         setPreviewStatus("idle");
     }, []);
@@ -221,18 +236,18 @@ export function useIndexSessionController({
             extractionPreview,
             actions: {
                 createSession,
-                endSession,
-                confirmExtraction,
-                cancelExtraction,
+                generateExtractionPreview,
+                confirmExtractionPreview,
+                cancelExtractionPreview,
                 openHistory,
             },
         }),
         [
-            cancelExtraction,
-            confirmExtraction,
+            cancelExtractionPreview,
+            confirmExtractionPreview,
             createSession,
-            endSession,
             extractionPreview,
+            generateExtractionPreview,
             openHistory,
             operationStatus,
             previewStatus,
