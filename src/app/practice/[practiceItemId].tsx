@@ -148,9 +148,9 @@ function ResponsePanel({ detail }: { detail: PracticeItemResponseDetail }) {
                 })}
             </ThemedText>
 
-            {detail.response.feedback ? (
+            {detail.feedback ? (
                 <ThemedText selectable type="small" themeColor="textSecondary">
-                    {formatPracticeValue(detail.response.feedback, {
+                    {formatPracticeValue(detail.feedback.feedback, {
                         preferText: true,
                     })}
                 </ThemedText>

@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-export const DATABASE_VERSION = 5;
+export const DATABASE_VERSION = 6;
 
 type Migration = {
     version: number;
@@ -327,6 +327,25 @@ CREATE TABLE IF NOT EXISTS app_settings (
         sql: `
 ALTER TABLE inquiries
 ADD COLUMN primary_language_context TEXT NOT NULL DEFAULT '';
+`,
+    },
+    {
+        version: 6,
+        sql: `
+CREATE TABLE IF NOT EXISTS practice_response_feedback (
+  user_response_id TEXT PRIMARY KEY NOT NULL REFERENCES user_responses(id) ON DELETE CASCADE,
+  feedback_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO practice_response_feedback (
+  user_response_id, feedback_json, created_at
+)
+SELECT id, feedback_json, submitted_at
+FROM user_responses
+WHERE feedback_json IS NOT NULL;
+
+ALTER TABLE user_responses DROP COLUMN feedback_json;
 `,
     },
 ];

@@ -11,6 +11,7 @@ import type {
     LearningEvidence,
     LearningTarget,
     LearningTargetEntity,
+    PracticeResponseFeedback,
     PracticeItem,
     PracticeItemTarget,
     UserResponse,
@@ -38,6 +39,7 @@ export type LearningTargetSummary = LearningTargetSummaryRecord & {
 export type PracticeResponseDraft = {
     response: UserResponse;
     evidence: LearningEvidence[];
+    feedback?: PracticeResponseFeedback;
 };
 
 export type EvaluatedPracticeResponseDraft = PracticeResponseDraft & {
@@ -55,6 +57,7 @@ export type PracticeItemTargetDetail = {
 export type PracticeItemResponseDetail = {
     response: UserResponse;
     evidence: LearningEvidence[];
+    feedback?: PracticeResponseFeedback;
 };
 
 export type PracticeItemDetail = PracticeItemSummary & {
@@ -322,7 +325,14 @@ export class PracticeRepository {
         const evidence = await practiceDao.listEvidenceForResponses(
             responses.map((response) => response.id)
         );
+        const feedback =
+            await practiceDao.listPracticeResponseFeedbackForResponses(
+                responses.map((response) => response.id)
+            );
         const evidenceByResponseId = new Map<string, LearningEvidence[]>();
+        const feedbackByResponseId = new Map(
+            feedback.map((item) => [item.userResponseId, item])
+        );
 
         for (const itemEvidence of evidence) {
             const existing = evidenceByResponseId.get(
@@ -350,6 +360,7 @@ export class PracticeRepository {
             responses: responses.map((response) => ({
                 response,
                 evidence: evidenceByResponseId.get(response.id) ?? [],
+                feedback: feedbackByResponseId.get(response.id),
             })),
         };
     }
@@ -382,9 +393,13 @@ export class PracticeRepository {
             userId: input.userId,
             answer: input.answer,
             submittedAt: now,
+        };
+        const feedback: PracticeResponseFeedback = {
+            userResponseId: responseId,
             feedback: {
                 summary: "Response saved. Evaluation has not run yet.",
             },
+            createdAt: now,
         };
         const evidence: LearningEvidence[] = detail.targets.map(
             ({ target }) => ({
@@ -399,11 +414,12 @@ export class PracticeRepository {
             })
         );
 
-        await this.recordResponse({ response, evidence });
+        await this.recordResponse({ response, evidence, feedback });
 
         return {
             response,
             evidence,
+            feedback,
         };
     }
 
@@ -421,6 +437,12 @@ export class PracticeRepository {
 
             await practiceDao.insertUserResponse(draft.response);
 
+            if (draft.feedback) {
+                await practiceDao.insertPracticeResponseFeedback(
+                    draft.feedback
+                );
+            }
+
             for (const evidence of draft.evidence) {
                 await practiceDao.insertLearningEvidence(evidence);
             }
@@ -435,6 +457,12 @@ export class PracticeRepository {
             const targetDao = new LearningTargetDao(tx);
 
             await practiceDao.insertUserResponse(draft.response);
+
+            if (draft.feedback) {
+                await practiceDao.insertPracticeResponseFeedback(
+                    draft.feedback
+                );
+            }
 
             for (const evidence of draft.evidence) {
                 await practiceDao.insertLearningEvidence(evidence);

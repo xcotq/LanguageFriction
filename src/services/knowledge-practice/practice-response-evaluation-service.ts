@@ -17,6 +17,7 @@ import type {
     LearningEvidence,
     LearningEvidenceResult,
     LearningTarget,
+    PracticeResponseFeedback,
     PracticeItem,
     UserResponse,
 } from "@/types/domain";
@@ -543,11 +544,16 @@ export class PracticeResponseEvaluationService {
             evaluation.feedbackSummary
         );
 
-        response.feedback = feedback;
+        const responseFeedback: PracticeResponseFeedback = {
+            userResponseId: response.id,
+            feedback,
+            createdAt: now,
+        };
 
         await this.practiceRepository.recordEvaluatedResponse({
             response,
             evidence,
+            feedback: responseFeedback,
             targetUpdates,
         });
 
@@ -581,6 +587,14 @@ export class PracticeResponseEvaluationService {
                         payload: input.payload,
                     })
                 ),
+            });
+
+            console.log("[LanguageFriction][userResponse=>evidence][llm]", {
+                practiceItemId: input.detail.item.id,
+                learningTargetIds: input.directTargets.map(
+                    ({ target }) => target.id
+                ),
+                output,
             });
 
             const modelResults = normalizeModelTargetResults(

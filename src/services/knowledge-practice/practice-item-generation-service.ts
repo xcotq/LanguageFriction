@@ -270,8 +270,7 @@ export class PracticeItemGenerationService {
             },
             generatedAt: now,
         };
-
-        return {
+        const draft: PracticeItemDraft = {
             item,
             targets: [
                 {
@@ -281,5 +280,14 @@ export class PracticeItemGenerationService {
                 },
             ],
         };
+
+        console.log("[LanguageFriction][learningTarget=>practiceItem][llm]", {
+            knowledgePointId: source.knowledgePoint.id,
+            inquiryId: source.inquiry.id,
+            learningTargetId: target.target.id,
+            output: draft,
+        });
+
+        return draft;
     }
 }

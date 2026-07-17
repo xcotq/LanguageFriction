@@ -4,6 +4,7 @@ import {
     learningEvidence,
     learningTargetEntities,
     learningTargets,
+    practiceResponseFeedback,
     practiceItems,
     practiceItemTargets,
     userResponses,
@@ -21,6 +22,7 @@ import type {
     LearningEvidence,
     LearningTarget,
     LearningTargetEntity,
+    PracticeResponseFeedback,
     PracticeItem,
     PracticeItemTarget,
     UserResponse,
@@ -31,6 +33,7 @@ type LearningTargetEntityRow = typeof learningTargetEntities.$inferSelect;
 type PracticeItemRow = typeof practiceItems.$inferSelect;
 type PracticeItemTargetRow = typeof practiceItemTargets.$inferSelect;
 type UserResponseRow = typeof userResponses.$inferSelect;
+type PracticeResponseFeedbackRow = typeof practiceResponseFeedback.$inferSelect;
 type LearningEvidenceRow = typeof learningEvidence.$inferSelect;
 
 const learningTargetColumns = `
@@ -81,8 +84,13 @@ const userResponseColumns = `
   practice_item_id AS practiceItemId,
   user_id AS userId,
   answer_json AS answerJson,
-  submitted_at AS submittedAt,
-  feedback_json AS feedbackJson
+  submitted_at AS submittedAt
+`;
+
+const practiceResponseFeedbackColumns = `
+  user_response_id AS userResponseId,
+  feedback_json AS feedbackJson,
+  created_at AS createdAt
 `;
 
 const learningEvidenceColumns = `
@@ -261,10 +269,19 @@ function mapUserResponse(row: UserResponseRow): UserResponse {
             raw: row.answerJson,
         }),
         submittedAt: textToDate(row.submittedAt),
-        feedback: parseOptionalJsonOrFallback<unknown>(
-            row.feedbackJson,
-            undefined
-        ),
+    };
+}
+
+function mapPracticeResponseFeedback(
+    row: PracticeResponseFeedbackRow
+): PracticeResponseFeedback {
+    return {
+        userResponseId: row.userResponseId,
+        feedback: parseJsonOrFallback<unknown>(row.feedbackJson, {
+            malformedJson: true,
+            raw: row.feedbackJson,
+        }),
+        createdAt: textToDate(row.createdAt),
     };
 }
 
@@ -740,9 +757,9 @@ WHERE id IN (${orphanPlaceholders})
         await this.db.runAsync(
             `
 INSERT INTO user_responses (
-  id, practice_item_id, user_id, answer_json, submitted_at, feedback_json
+  id, practice_item_id, user_id, answer_json, submitted_at
 )
-VALUES (?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?)
 `,
             [
                 response.id,
@@ -750,7 +767,6 @@ VALUES (?, ?, ?, ?, ?, ?)
                 response.userId,
                 jsonToText(response.answer),
                 dateToText(response.submittedAt),
-                optionalJsonToText(response.feedback),
             ]
         );
     }
@@ -785,6 +801,47 @@ LIMIT ?
         );
 
         return rows.map(mapUserResponse);
+    }
+
+    async insertPracticeResponseFeedback(
+        feedback: PracticeResponseFeedback
+    ): Promise<void> {
+        await this.db.runAsync(
+            `
+INSERT INTO practice_response_feedback (
+  user_response_id, feedback_json, created_at
+)
+VALUES (?, ?, ?)
+ON CONFLICT(user_response_id) DO UPDATE SET
+  feedback_json = excluded.feedback_json,
+  created_at = excluded.created_at
+`,
+            [
+                feedback.userResponseId,
+                jsonToText(feedback.feedback),
+                dateToText(feedback.createdAt),
+            ]
+        );
+    }
+
+    async listPracticeResponseFeedbackForResponses(
+        userResponseIds: string[]
+    ): Promise<PracticeResponseFeedback[]> {
+        if (userResponseIds.length === 0) {
+            return [];
+        }
+
+        const placeholders = userResponseIds.map(() => "?").join(", ");
+        const rows = await this.db.getAllAsync<PracticeResponseFeedbackRow>(
+            `
+SELECT ${practiceResponseFeedbackColumns}
+FROM practice_response_feedback
+WHERE user_response_id IN (${placeholders})
+`,
+            userResponseIds
+        );
+
+        return rows.map(mapPracticeResponseFeedback);
     }
 
     async insertLearningEvidence(evidence: LearningEvidence): Promise<void> {

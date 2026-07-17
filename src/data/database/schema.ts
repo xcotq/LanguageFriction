@@ -384,9 +384,20 @@ export const userResponses = sqliteTable(
         userId: text("user_id").notNull(),
         answerJson: text("answer_json").notNull(),
         submittedAt: text("submitted_at").notNull(),
-        feedbackJson: text("feedback_json"),
     },
     (table) => [index("idx_user_responses_practice").on(table.practiceItemId)]
+);
+
+export const practiceResponseFeedback = sqliteTable(
+    "practice_response_feedback",
+    {
+        userResponseId: text("user_response_id")
+            .primaryKey()
+            .notNull()
+            .references(() => userResponses.id, { onDelete: "cascade" }),
+        feedbackJson: text("feedback_json").notNull(),
+        createdAt: text("created_at").notNull(),
+    }
 );
 
 export const learningEvidence = sqliteTable(

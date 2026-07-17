@@ -87,7 +87,7 @@ UserResponse
 可以利用现有的 `unknown` JSON 字段承载第一版需要的结构：
 
 - `UserResponse.answer`
-- `UserResponse.feedback`
+- `PracticeResponseFeedback.feedback`
 - `PracticeItem.prompt`
 - `PracticeItem.expectedAnswer`
 - `PracticeItem.acceptableAnswers`
@@ -284,7 +284,7 @@ type ExpressionRecallError = {
 };
 ```
 
-注意：`error` 不是只给失败用。它可以保存结构化评估细节，用户可读反馈仍放在 `UserResponse.feedback`。
+注意：`error` 不是只给失败用。它可以保存结构化评估细节，用户可读反馈仍放在 `PracticeResponseFeedback.feedback`。
 
 ## Utterance Production 评估
 
@@ -510,6 +510,7 @@ type MasteryViewState =
 type EvaluatedPracticeResponseDraft = {
     response: UserResponse;
     evidence: LearningEvidence[];
+    feedback?: PracticeResponseFeedback;
     targetUpdates: LearningTarget[];
 };
 
@@ -525,6 +526,7 @@ class PracticeRepository {
 ```text
 runWriteTransaction
 -> insert user response
+-> insert practice response feedback
 -> insert learning evidence rows
 -> upsert updated learning targets
 ```
@@ -547,7 +549,7 @@ practiceEvaluationService.evaluate(...)
 
 提交后：
 
-- 展示 `UserResponse.feedback.summary`
+- 展示 `PracticeResponseFeedback.feedback.summary`
 - 展示每条 evidence 的 result 和 confidence
 - 重新加载 practice detail，让 target 的 due/review 状态刷新
 
@@ -559,7 +561,7 @@ practiceEvaluationService.evaluate(...)
 
 ## 用户反馈结构
 
-`UserResponse.feedback` 建议保存用户可读摘要：
+`PracticeResponseFeedback.feedback` 建议保存用户可读摘要：
 
 ```ts
 type PracticeUserFeedback = {

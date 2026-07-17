@@ -1180,9 +1180,13 @@ const seedPracticeResponses: PracticeResponseDraft[] = [
             userId: SEED_USER_ID,
             answer: "bacon bits",
             submittedAt: seedDate("2026-07-01T01:30:00.000Z"),
+        },
+        feedback: {
+            userResponseId: "response:seed:restaurant:bacon-bits:correct",
             feedback: {
                 summary: "Correct. Keep the plural form.",
             },
+            createdAt: seedDate("2026-07-01T01:30:00.000Z"),
         },
         evidence: [
             {
@@ -1202,10 +1206,14 @@ const seedPracticeResponses: PracticeResponseDraft[] = [
             userId: SEED_USER_ID,
             answer: "Can I have more bacon on the potato?",
             submittedAt: seedDate("2026-07-01T01:35:00.000Z"),
+        },
+        feedback: {
+            userResponseId: "response:seed:restaurant:request:partial",
             feedback: {
                 summary:
                     "Understandable, but it missed the target phrase bacon bits.",
             },
+            createdAt: seedDate("2026-07-01T01:35:00.000Z"),
         },
         evidence: [
             {

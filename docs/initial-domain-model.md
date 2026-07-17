@@ -47,6 +47,7 @@ flowchart TD
 
   LT --> PI["PracticeItem"]
   PI --> UR["UserResponse"]
+  UR --> PRF["PracticeResponseFeedback"]
   UR --> LE["LearningEvidence"]
   LE --> LT
 ```
@@ -559,7 +560,22 @@ UserResponse {
   userId: string
   answer: unknown
   submittedAt: Date
-  feedback?: unknown
+}
+```
+
+### PracticeResponseFeedback
+
+PracticeResponseFeedback is system-generated, user-facing feedback for a UserResponse.
+
+It is separated from UserResponse because UserResponse represents the user's submitted information, while feedback is produced by the evaluation system.
+
+Suggested fields:
+
+```ts
+PracticeResponseFeedback {
+  userResponseId: string
+  feedback: unknown
+  createdAt: Date
 }
 ```
 
@@ -587,7 +603,7 @@ LearningEvidence updates LearningTarget scheduling state. UserResponse should no
 
 `result` is the source of truth for success or failure. There is no separate numeric score until the product has a reliable quantification method.
 
-`error` stores structured evaluation details when available, such as missing expression, wrong register, unnatural collocation, or confused contrast target. User-facing feedback belongs on `UserResponse.feedback`, so it is not duplicated here.
+`error` stores structured evaluation details when available, such as missing expression, wrong register, unnatural collocation, or confused contrast target. User-facing feedback belongs in `PracticeResponseFeedback`, so it is not duplicated here.
 
 ## 6. Local App Settings
 
@@ -835,6 +851,7 @@ Learning layer:
 - PracticeItem
 - PracticeItemTarget
 - UserResponse
+- PracticeResponseFeedback
 - LearningEvidence
 
 Local settings layer:

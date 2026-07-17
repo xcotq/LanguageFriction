@@ -292,7 +292,12 @@ export type UserResponse = {
     userId: string;
     answer: unknown;
     submittedAt: Date;
-    feedback?: unknown;
+};
+
+export type PracticeResponseFeedback = {
+    userResponseId: string;
+    feedback: unknown;
+    createdAt: Date;
 };
 
 export type LearningEvidence = {
